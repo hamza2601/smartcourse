@@ -1,9 +1,8 @@
 package handlers
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"smartcourse/internal/services"
 )
@@ -40,13 +39,13 @@ func (uh *UserHandler) RegisterUser(c *gin.Context) {
 
 func (uh *UserHandler) GetUser(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(400, gin.H{"error": "invalid user id"})
 		return
 	}
 
-	user, err := uh.Service.GetUser(uint(id))
+	user, err := uh.Service.GetUser(id)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "user not found"})
 		return

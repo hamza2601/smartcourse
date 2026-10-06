@@ -3,6 +3,8 @@ package services
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"smartcourse/internal/models"
 	"smartcourse/internal/repositories"
 )
@@ -42,7 +44,7 @@ func (us *UserService) RegisterUser(name, email, role string) (*models.User, err
 	return user, nil
 }
 
-func (us *UserService) GetUser(id uint) (*models.User, error) {
+func (us *UserService) GetUser(id uuid.UUID) (*models.User, error) {
 	return us.Repo.GetUserByID(id)
 }
 

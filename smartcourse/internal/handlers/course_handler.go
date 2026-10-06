@@ -1,9 +1,8 @@
 package handlers
 
 import (
-	"strconv"
-
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"smartcourse/internal/services"
 )
@@ -17,8 +16,8 @@ func NewCourseHandler(service *services.CourseService) *CourseHandler {
 }
 
 type CreateCourseRequest struct {
-	Name         string `json:"name" binding:"required"`
-	InstructorID uint   `json:"instructor_id" binding:"required"`
+	Name         string    `json:"name" binding:"required"`
+	InstructorID uuid.UUID `json:"instructor_id" binding:"required"`
 }
 
 func (ch *CourseHandler) CreateCourse(c *gin.Context) {
@@ -39,13 +38,13 @@ func (ch *CourseHandler) CreateCourse(c *gin.Context) {
 
 func (ch *CourseHandler) GetCourse(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(400, gin.H{"error": "invalid course id"})
 		return
 	}
 
-	course, err := ch.Service.GetCourse(uint(id))
+	course, err := ch.Service.GetCourse(id)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "course not found"})
 		return

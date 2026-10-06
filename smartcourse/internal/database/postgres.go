@@ -26,3 +26,13 @@ func (d *Database) Close() error {
 	}
 	return sqlDB.Close()
 }
+
+func (d *Database) CreateSchemas() error {
+	schemas := []string{"user_service", "course_service", "enrollment_service"}
+	for _, schema := range schemas {
+		if err := d.DB.Exec("CREATE SCHEMA IF NOT EXISTS " + schema).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -3,6 +3,8 @@ package services
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"smartcourse/internal/models"
 	"smartcourse/internal/repositories"
 )
@@ -22,11 +24,11 @@ func NewCourseService(
 	}
 }
 
-func (cs *CourseService) CreateCourse(name string, instructorID uint) (*models.Course, error) {
+func (cs *CourseService) CreateCourse(name string, instructorID uuid.UUID) (*models.Course, error) {
 	if name == "" {
 		return nil, fmt.Errorf("course name cannot be empty")
 	}
-	if instructorID == 0 {
+	if instructorID == uuid.Nil {
 		return nil, fmt.Errorf("instructor ID must be provided")
 	}
 
@@ -50,7 +52,7 @@ func (cs *CourseService) CreateCourse(name string, instructorID uint) (*models.C
 	return course, nil
 }
 
-func (cs *CourseService) GetCourse(id uint) (*models.Course, error) {
+func (cs *CourseService) GetCourse(id uuid.UUID) (*models.Course, error) {
 	return cs.CourseRepo.GetCourseByID(id)
 }
 

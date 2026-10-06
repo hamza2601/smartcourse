@@ -1,16 +1,18 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Enrollment struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	StudentID uint      `gorm:"not null;uniqueIndex:idx_student_course" json:"student_id"`
-	CourseID  uint      `gorm:"not null;uniqueIndex:idx_student_course" json:"course_id"`
-	Student   User      `gorm:"foreignKey:StudentID" json:"-"`
-	Course    Course    `gorm:"foreignKey:CourseID" json:"-"`
+	ID        uuid.UUID `gorm:"primaryKey" json:"id"`
+	StudentID uuid.UUID `gorm:"not null;uniqueIndex:idx_student_course" json:"student_id"`
+	CourseID  uuid.UUID `gorm:"not null;uniqueIndex:idx_student_course" json:"course_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func (Enrollment) TableName() string {
-	return "enrollments"
+	return "enrollment_service.enrollments"
 }

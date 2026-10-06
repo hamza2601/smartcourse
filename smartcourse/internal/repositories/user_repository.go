@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"smartcourse/internal/models"
@@ -15,12 +16,13 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 }
 
 func (ur *UserRepository) CreateUser(user *models.User) error {
+	user.ID = uuid.New()
 	return ur.DB.Create(user).Error
 }
 
-func (ur *UserRepository) GetUserByID(id uint) (*models.User, error) {
+func (ur *UserRepository) GetUserByID(id uuid.UUID) (*models.User, error) {
 	var user models.User
-	if err := ur.DB.First(&user, id).Error; err != nil {
+	if err := ur.DB.Where("id = ?", id).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil

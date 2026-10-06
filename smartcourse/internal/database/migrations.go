@@ -5,6 +5,9 @@ import (
 )
 
 func (d *Database) RunMigrations() error {
+	if err := d.CreateSchemas(); err != nil {
+		return err
+	}
 	return d.DB.AutoMigrate(
 		&models.User{},
 		&models.Course{},
