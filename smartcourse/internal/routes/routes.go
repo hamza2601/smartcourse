@@ -14,12 +14,15 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 
 	userRepo := repositories.NewUserRepository(db)
 	courseRepo := repositories.NewCourseRepository(db)
+	enrollmentRepo := repositories.NewEnrollmentRepository(db)
 
 	userService := services.NewUserService(userRepo)
 	courseService := services.NewCourseService(courseRepo, userRepo)
+	enrollmentService := services.NewEnrollmentService(enrollmentRepo)
 
 	userHandler := handlers.NewUserHandler(userService)
 	courseHandler := handlers.NewCourseHandler(courseService)
+	enrollmentHandler := handlers.NewEnrollmentHandler(enrollmentService)
 
 	v1 := router.Group("/api/v1")
 	{
@@ -29,6 +32,9 @@ func SetupRoutes(db *gorm.DB) *gin.Engine {
 		v1.POST("/courses", courseHandler.CreateCourse)
 		v1.GET("/courses/:id", courseHandler.GetCourse)
 		v1.GET("/courses", courseHandler.ListCourses)
+
+		v1.POST("/enrollments", enrollmentHandler.Enroll)
+		v1.GET("/enrollments/:id", enrollmentHandler.GetEnrollment)
 	}
 
 	return router

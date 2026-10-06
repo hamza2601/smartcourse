@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -17,7 +18,7 @@ func NewUserService(repo *repositories.UserRepository) *UserService {
 	return &UserService{Repo: repo}
 }
 
-func (us *UserService) RegisterUser(name, email, role string) (*models.User, error) {
+func (us *UserService) RegisterUser(ctx context.Context, name, email, role string) (*models.User, error) {
 	if name == "" {
 		return nil, fmt.Errorf("name cannot be empty")
 	}
@@ -28,7 +29,7 @@ func (us *UserService) RegisterUser(name, email, role string) (*models.User, err
 		return nil, fmt.Errorf("invalid role: %s", role)
 	}
 
-	existing, err := us.Repo.GetUserByEmail(email)
+	existing, err := us.Repo.GetUserByEmail(ctx, email)
 	if err == nil && existing != nil {
 		return nil, fmt.Errorf("email already exists")
 	}
@@ -38,14 +39,14 @@ func (us *UserService) RegisterUser(name, email, role string) (*models.User, err
 		Email: email,
 		Role:  role,
 	}
-	if err := us.Repo.CreateUser(user); err != nil {
+	if err := us.Repo.CreateUser(ctx, user); err != nil {
 		return nil, err
 	}
 	return user, nil
 }
 
-func (us *UserService) GetUser(id uuid.UUID) (*models.User, error) {
-	return us.Repo.GetUserByID(id)
+func (us *UserService) GetUser(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	return us.Repo.GetUserByID(ctx, id)
 }
 
 func (us *UserService) ValidateRole(role string) bool {

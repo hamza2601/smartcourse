@@ -21,13 +21,15 @@ type CreateCourseRequest struct {
 }
 
 func (ch *CourseHandler) CreateCourse(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var req CreateCourseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	course, err := ch.Service.CreateCourse(req.Name, req.InstructorID)
+	course, err := ch.Service.CreateCourse(ctx, req.Name, req.InstructorID)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -37,6 +39,8 @@ func (ch *CourseHandler) CreateCourse(c *gin.Context) {
 }
 
 func (ch *CourseHandler) GetCourse(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -44,7 +48,7 @@ func (ch *CourseHandler) GetCourse(c *gin.Context) {
 		return
 	}
 
-	course, err := ch.Service.GetCourse(id)
+	course, err := ch.Service.GetCourse(ctx, id)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "course not found"})
 		return
@@ -54,7 +58,9 @@ func (ch *CourseHandler) GetCourse(c *gin.Context) {
 }
 
 func (ch *CourseHandler) ListCourses(c *gin.Context) {
-	courses, err := ch.Service.ListCourses()
+	ctx := c.Request.Context()
+
+	courses, err := ch.Service.ListCourses(ctx)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return

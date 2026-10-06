@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ func NewCourseService(
 	}
 }
 
-func (cs *CourseService) CreateCourse(name string, instructorID uuid.UUID) (*models.Course, error) {
+func (cs *CourseService) CreateCourse(ctx context.Context, name string, instructorID uuid.UUID) (*models.Course, error) {
 	if name == "" {
 		return nil, fmt.Errorf("course name cannot be empty")
 	}
@@ -32,7 +33,7 @@ func (cs *CourseService) CreateCourse(name string, instructorID uuid.UUID) (*mod
 		return nil, fmt.Errorf("instructor ID must be provided")
 	}
 
-	instructor, err := cs.UserRepo.GetUserByID(instructorID)
+	instructor, err := cs.UserRepo.GetUserByID(ctx, instructorID)
 	if err != nil {
 		return nil, fmt.Errorf("instructor not found")
 	}
@@ -46,16 +47,16 @@ func (cs *CourseService) CreateCourse(name string, instructorID uuid.UUID) (*mod
 		InstructorID: instructorID,
 		Status:       "draft",
 	}
-	if err := cs.CourseRepo.CreateCourse(course); err != nil {
+	if err := cs.CourseRepo.CreateCourse(ctx, course); err != nil {
 		return nil, err
 	}
 	return course, nil
 }
 
-func (cs *CourseService) GetCourse(id uuid.UUID) (*models.Course, error) {
-	return cs.CourseRepo.GetCourseByID(id)
+func (cs *CourseService) GetCourse(ctx context.Context, id uuid.UUID) (*models.Course, error) {
+	return cs.CourseRepo.GetCourseByID(ctx, id)
 }
 
-func (cs *CourseService) ListCourses() ([]models.Course, error) {
-	return cs.CourseRepo.ListAllCourses()
+func (cs *CourseService) ListCourses(ctx context.Context) ([]models.Course, error) {
+	return cs.CourseRepo.ListAllCourses(ctx)
 }

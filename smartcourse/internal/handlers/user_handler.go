@@ -22,13 +22,15 @@ type RegisterRequest struct {
 }
 
 func (uh *UserHandler) RegisterUser(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	user, err := uh.Service.RegisterUser(req.Name, req.Email, req.Role)
+	user, err := uh.Service.RegisterUser(ctx, req.Name, req.Email, req.Role)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
@@ -38,6 +40,8 @@ func (uh *UserHandler) RegisterUser(c *gin.Context) {
 }
 
 func (uh *UserHandler) GetUser(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -45,7 +49,7 @@ func (uh *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	user, err := uh.Service.GetUser(id)
+	user, err := uh.Service.GetUser(ctx, id)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "user not found"})
 		return
