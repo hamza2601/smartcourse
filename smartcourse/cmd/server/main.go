@@ -14,15 +14,15 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	if err := database.RunLiquibaseMigrations(cfg); err != nil {
+		log.Fatalf("failed to run liquibase migrations: %v", err)
+	}
+
 	db, err := database.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 	defer db.Close()
-
-	if err := db.RunMigrations(); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
-	}
 
 	router := routes.SetupRoutes(db.DB)
 

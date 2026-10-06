@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - include:
+      file: 001-create-user-service-schema.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 002-create-course-service-schema.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 003-create-enrollment-service-schema.yaml
+      relativeToChangelogFile: true
