@@ -13,5 +13,8 @@ func (d *Database) RunMigrations() error {
 		&models.Course{},
 		&models.Enrollment{},
 		&models.Progress{},
+		&models.UserServiceOutboxEvent{},
+		&models.CourseServiceOutboxEvent{},
+		&models.EnrollmentServiceOutboxEvent{},
 	)
 }
