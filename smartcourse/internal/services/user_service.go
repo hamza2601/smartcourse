@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	apperrors "smartcourse/internal/errors"
 	"smartcourse/internal/models"
 	"smartcourse/internal/repositories"
 )
@@ -31,7 +32,7 @@ func (us *UserService) RegisterUser(ctx context.Context, name, email, role strin
 
 	existing, err := us.Repo.GetUserByEmail(ctx, email)
 	if err == nil && existing != nil {
-		return nil, fmt.Errorf("email already exists")
+		return nil, &apperrors.UserAlreadyExistsError{Email: email}
 	}
 
 	user := &models.User{

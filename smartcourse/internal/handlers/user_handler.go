@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	apperrors "smartcourse/internal/errors"
 	"smartcourse/internal/services"
 )
 
@@ -32,7 +35,16 @@ func (uh *UserHandler) RegisterUser(c *gin.Context) {
 
 	user, err := uh.Service.RegisterUser(ctx, req.Name, req.Email, req.Role)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		var existsErr *apperrors.UserAlreadyExistsError
+		var dbErr *apperrors.DatabaseError
+		switch {
+		case errors.As(err, &existsErr):
+			c.JSON(409, gin.H{"error": "email already exists"})
+		case errors.As(err, &dbErr):
+			c.JSON(500, gin.H{"error": "internal server error"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -51,7 +63,16 @@ func (uh *UserHandler) GetUser(c *gin.Context) {
 
 	user, err := uh.Service.GetUser(ctx, id)
 	if err != nil {
-		c.JSON(404, gin.H{"error": "user not found"})
+		var notFoundErr *apperrors.UserNotFoundError
+		var dbErr *apperrors.DatabaseError
+		switch {
+		case errors.As(err, &notFoundErr):
+			c.JSON(404, gin.H{"error": "user not found"})
+		case errors.As(err, &dbErr):
+			c.JSON(500, gin.H{"error": "internal server error"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
+		}
 		return
 	}
 

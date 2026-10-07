@@ -2,12 +2,11 @@ package services
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
+	apperrors "smartcourse/internal/errors"
 	"smartcourse/internal/models"
 	"smartcourse/internal/repositories"
 )
@@ -29,11 +28,11 @@ func (es *EnrollmentService) EnrollStudent(ctx context.Context, studentID, cours
 	}
 
 	existing, err := es.Repo.GetEnrollmentByStudentCourse(ctx, studentID, courseID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil {
 		return nil, err
 	}
 	if existing != nil && existing.Status == "active" {
-		return nil, fmt.Errorf("student already enrolled")
+		return nil, &apperrors.EnrollmentAlreadyExistsError{StudentID: studentID, CourseID: courseID}
 	}
 
 	enrollment := &models.Enrollment{

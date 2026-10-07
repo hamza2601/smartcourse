@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	apperrors "smartcourse/internal/errors"
 	"smartcourse/internal/services"
 )
 
@@ -31,7 +34,16 @@ func (eh *EnrollmentHandler) Enroll(c *gin.Context) {
 
 	enrollment, err := eh.Service.EnrollStudent(ctx, req.StudentID, req.CourseID)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		var existsErr *apperrors.EnrollmentAlreadyExistsError
+		var dbErr *apperrors.DatabaseError
+		switch {
+		case errors.As(err, &existsErr):
+			c.JSON(409, gin.H{"error": "student already enrolled"})
+		case errors.As(err, &dbErr):
+			c.JSON(500, gin.H{"error": "internal server error"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -50,7 +62,16 @@ func (eh *EnrollmentHandler) GetEnrollment(c *gin.Context) {
 
 	enrollment, err := eh.Service.GetEnrollment(ctx, id)
 	if err != nil {
-		c.JSON(404, gin.H{"error": "enrollment not found"})
+		var notFoundErr *apperrors.EnrollmentNotFoundError
+		var dbErr *apperrors.DatabaseError
+		switch {
+		case errors.As(err, &notFoundErr):
+			c.JSON(404, gin.H{"error": "enrollment not found"})
+		case errors.As(err, &dbErr):
+			c.JSON(500, gin.H{"error": "internal server error"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
