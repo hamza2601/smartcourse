@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"smartcourse/internal/domain"
 	apperrors "smartcourse/internal/errors"
-	"smartcourse/internal/models"
 	"smartcourse/internal/repositories"
 )
 
@@ -19,7 +19,7 @@ func NewEnrollmentService(repo *repositories.EnrollmentRepository) *EnrollmentSe
 	return &EnrollmentService{Repo: repo}
 }
 
-func (es *EnrollmentService) EnrollStudent(ctx context.Context, studentID, courseID uuid.UUID) (*models.Enrollment, error) {
+func (es *EnrollmentService) EnrollStudent(ctx context.Context, studentID, courseID uuid.UUID) (*domain.Enrollment, error) {
 	if studentID == uuid.Nil {
 		return nil, fmt.Errorf("student ID must be provided")
 	}
@@ -35,7 +35,7 @@ func (es *EnrollmentService) EnrollStudent(ctx context.Context, studentID, cours
 		return nil, &apperrors.EnrollmentAlreadyExistsError{StudentID: studentID, CourseID: courseID}
 	}
 
-	enrollment := &models.Enrollment{
+	enrollment := &domain.Enrollment{
 		ID:        uuid.New(),
 		StudentID: studentID,
 		CourseID:  courseID,
@@ -47,6 +47,6 @@ func (es *EnrollmentService) EnrollStudent(ctx context.Context, studentID, cours
 	return enrollment, nil
 }
 
-func (es *EnrollmentService) GetEnrollment(ctx context.Context, id uuid.UUID) (*models.Enrollment, error) {
+func (es *EnrollmentService) GetEnrollment(ctx context.Context, id uuid.UUID) (*domain.Enrollment, error) {
 	return es.Repo.GetEnrollmentByID(ctx, id)
 }

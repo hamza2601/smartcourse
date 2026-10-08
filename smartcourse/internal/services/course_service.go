@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"smartcourse/internal/models"
+	"smartcourse/internal/domain"
 	"smartcourse/internal/repositories"
 )
 
@@ -25,7 +25,7 @@ func NewCourseService(
 	}
 }
 
-func (cs *CourseService) CreateCourse(ctx context.Context, name string, instructorID uuid.UUID) (*models.Course, error) {
+func (cs *CourseService) CreateCourse(ctx context.Context, name string, instructorID uuid.UUID) (*domain.Course, error) {
 	if name == "" {
 		return nil, fmt.Errorf("course name cannot be empty")
 	}
@@ -42,7 +42,7 @@ func (cs *CourseService) CreateCourse(ctx context.Context, name string, instruct
 		return nil, fmt.Errorf("user is not an instructor")
 	}
 
-	course := &models.Course{
+	course := &domain.Course{
 		Name:         name,
 		InstructorID: instructorID,
 		Status:       "draft",
@@ -53,10 +53,10 @@ func (cs *CourseService) CreateCourse(ctx context.Context, name string, instruct
 	return course, nil
 }
 
-func (cs *CourseService) GetCourse(ctx context.Context, id uuid.UUID) (*models.Course, error) {
+func (cs *CourseService) GetCourse(ctx context.Context, id uuid.UUID) (*domain.Course, error) {
 	return cs.CourseRepo.GetCourseByID(ctx, id)
 }
 
-func (cs *CourseService) ListCourses(ctx context.Context) ([]models.Course, error) {
+func (cs *CourseService) ListCourses(ctx context.Context) ([]domain.Course, error) {
 	return cs.CourseRepo.ListAllCourses(ctx)
 }

@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"smartcourse/internal/domain"
 	apperrors "smartcourse/internal/errors"
-	"smartcourse/internal/models"
 	"smartcourse/internal/repositories"
 )
 
@@ -19,7 +19,7 @@ func NewUserService(repo *repositories.UserRepository) *UserService {
 	return &UserService{Repo: repo}
 }
 
-func (us *UserService) RegisterUser(ctx context.Context, name, email, role string) (*models.User, error) {
+func (us *UserService) RegisterUser(ctx context.Context, name, email, role string) (*domain.User, error) {
 	if name == "" {
 		return nil, fmt.Errorf("name cannot be empty")
 	}
@@ -35,7 +35,7 @@ func (us *UserService) RegisterUser(ctx context.Context, name, email, role strin
 		return nil, &apperrors.UserAlreadyExistsError{Email: email}
 	}
 
-	user := &models.User{
+	user := &domain.User{
 		Name:  name,
 		Email: email,
 		Role:  role,
@@ -46,7 +46,7 @@ func (us *UserService) RegisterUser(ctx context.Context, name, email, role strin
 	return user, nil
 }
 
-func (us *UserService) GetUser(ctx context.Context, id uuid.UUID) (*models.User, error) {
+func (us *UserService) GetUser(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	return us.Repo.GetUserByID(ctx, id)
 }
 
