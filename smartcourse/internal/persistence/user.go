@@ -13,6 +13,8 @@ type UserDB struct {
 	Role      string    `gorm:"type:varchar(50);not null"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	PasswordHash string `gorm:"type:varchar(255);not null;default:''"`
 }
 
 func (UserDB) TableName() string {

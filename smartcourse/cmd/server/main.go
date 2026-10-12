@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 
 	"smartcourse/internal/config"
 	"smartcourse/internal/database"
+	"smartcourse/internal/domain"
+	apperrors "smartcourse/internal/errors"
+	"smartcourse/internal/repositories"
 	"smartcourse/internal/routes"
+	"smartcourse/internal/services"
 )
 
 func main() {
@@ -24,10 +30,28 @@ func main() {
 	}
 	defer db.Close()
 
-	router := routes.SetupRoutes(db.DB)
+	if err := seedAdmin(context.Background(), cfg, services.NewUserService(repositories.NewUserRepository(db.DB))); err != nil {
+		log.Fatalf("failed to seed admin user: %v", err)
+	}
+
+	router := routes.SetupRoutes(db.DB, cfg)
 
 	log.Printf("Starting server on :%s\n", cfg.ServerPort)
 	if err := router.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
+}
+
+// seedAdmin creates the first admin, since only admins can create users.
+// It is a no-op unless ADMIN_EMAIL and ADMIN_PASSWORD are both set.
+func seedAdmin(ctx context.Context, cfg *config.Config, userService *services.UserService) error {
+	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
+		return nil
+	}
+	_, err := userService.RegisterUser(ctx, "Admin", cfg.AdminEmail, domain.RoleAdmin, cfg.AdminPassword)
+	var exists *apperrors.UserAlreadyExistsError
+	if err != nil && !errors.As(err, &exists) {
+		return err
+	}
+	return nil
 }

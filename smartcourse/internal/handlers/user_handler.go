@@ -22,6 +22,8 @@ type RegisterRequest struct {
 	Name  string `json:"name" binding:"required"`
 	Email string `json:"email" binding:"required"`
 	Role  string `json:"role" binding:"required"`
+
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 func (uh *UserHandler) RegisterUser(c *gin.Context) {
@@ -33,7 +35,7 @@ func (uh *UserHandler) RegisterUser(c *gin.Context) {
 		return
 	}
 
-	user, err := uh.Service.RegisterUser(ctx, req.Name, req.Email, req.Role)
+	user, err := uh.Service.RegisterUser(ctx, req.Name, req.Email, req.Role, req.Password)
 	if err != nil {
 		var existsErr *apperrors.UserAlreadyExistsError
 		var dbErr *apperrors.DatabaseError
