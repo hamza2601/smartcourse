@@ -21,19 +21,22 @@ The backend is built with **Go**, using **Gin** for HTTP routing, **GORM** as th
 
 ## 3. Architecture
 
-Requests flow through a layered architecture:
+SmartCourse is a distributed course management platform built as true microservices:
+
+- **User Service** (port 8081): Authentication, user management, admin seeding
+- **Course Service** (port 8082): Course CRUD, validates instructors via User Service
+- **Enrollment Service** (port 8083): Enrollment management, validates courses and students via inter-service APIs
+- **PostgreSQL**: Single database with schema-per-service isolation (user_service, course_service, enrollment_service schemas)
+- **Temporal**: Workflow orchestration server for Week 2 (course publishing pipeline)
+- **Liquibase**: Versioned schema migrations, run once at startup
+
+Services communicate via HTTP internal APIs (/internal/* endpoints) over the Docker Compose network.
+
+Inside each service, requests flow through the same layers:
 
 ```
 HTTP Request → Handlers → Services → Repositories → GORM → PostgreSQL
 ```
-
-- **Handlers** (`internal/handlers/`) — parse HTTP requests, call services, and write JSON responses. No business logic lives here.
-- **Services** (`internal/services/`) — business logic and validation (e.g. checking a user's role before letting them create a course).
-- **Repositories** (`internal/repositories/`) — the data access layer; all direct database queries live here.
-- **GORM** — the ORM layer that translates Go structs and method calls into SQL.
-- **PostgreSQL** — the underlying relational database that persists all data.
-
-Each layer only depends on the layer directly below it, which keeps HTTP concerns, business rules, and database queries independent and easy to test in isolation.
 
 ## 4. Database Schema
 
@@ -86,23 +89,31 @@ Four tables back the application:
 ## 5. Project Structure
 
 ```
-smartcourse/
-├── cmd/
-│   └── server/
-│       └── main.go              # Application entry point
-├── internal/
-│   ├── config/                  # Environment/config loading
-│   ├── database/                # DB connection + migrations
-│   ├── models/                  # User, Course, Enrollment, Progress structs
-│   ├── repositories/            # Data access layer (GORM queries)
-│   ├── services/                # Business logic and validation
-│   ├── handlers/                # HTTP request/response handling (Gin)
-│   └── routes/                  # Route registration
-├── migrations/                  # Reserved for future SQL migration files
-├── docker-compose.yml           # Local PostgreSQL for development
-├── .env                         # Local configuration (not committed)
-├── .env.example                 # Template for required environment variables
-└── go.mod
+.
+├── docker-compose.yml           # Postgres, Liquibase, the three services, Temporal
+├── README.md
+└── smartcourse/                 # Go module
+    ├── cmd/
+    │   ├── user-service/        # main.go + Dockerfile (port 8081)
+    │   ├── course-service/      # main.go + Dockerfile (port 8082)
+    │   └── enrollment-service/  # main.go + Dockerfile (port 8083)
+    ├── internal/
+    │   ├── config/              # Environment/config loading
+    │   ├── database/            # DB connection
+    │   ├── domain/              # Business entities (no DB concerns)
+    │   ├── persistence/         # GORM models
+    │   ├── mappers/             # domain <-> persistence conversion
+    │   ├── errors/              # Domain error types
+    │   ├── repositories/        # Data access layer (GORM queries)
+    │   ├── services/            # Business logic, inter-service HTTP calls
+    │   ├── handlers/            # HTTP request/response handling (Gin)
+    │   ├── middleware/          # JWT auth + role checks
+    │   ├── models/              # Outbox event models
+    │   └── routes/              # Per-service route registration
+    ├── liquibase/               # Dockerfile: Liquibase + PostgreSQL driver
+    ├── migrations/              # Liquibase changelogs (schema source of truth)
+    ├── .env.example             # Template for required environment variables
+    └── go.mod
 ```
 
 ## 6. Setup Instructions
@@ -119,28 +130,14 @@ smartcourse/
    ```
    git clone <repo-url>
    ```
-2. Move into the Go project directory:
+2. Move into the repository root (the directory containing `docker-compose.yml`).
+3. Build and start everything:
    ```
-   cd smartcourse
+   docker-compose up --build
    ```
-3. Create a `.env` file (copy from `.env.example`) with:
-   ```
-   DB_HOST=localhost
-   DB_PORT=5432
-   DB_USER=postgres
-   DB_PASSWORD=password
-   DB_NAME=smartcourse_db
-   SERVER_PORT=8080
-   ```
-4. Start PostgreSQL via Docker Compose (run from the project root, where `docker-compose.yml` lives):
-   ```
-   docker-compose up -d
-   ```
-5. Run the application:
-   ```
-   go run cmd/server/main.go
-   ```
-6. The app listens on `http://localhost:8080`. On startup it automatically runs GORM `AutoMigrate` to create/update the `users`, `courses`, `enrollments`, and `progress` tables.
+4. This starts PostgreSQL, runs the Liquibase migrations once, then starts the three services (User on `http://localhost:8081`, Course on `http://localhost:8082`, Enrollment on `http://localhost:8083`) and Temporal on port `7233`.
+
+To run a service outside Docker, copy `smartcourse/.env.example` to `smartcourse/.env` and fill in the values.
 
 ## 7. API Endpoints
 
@@ -256,8 +253,7 @@ curl http://localhost:8080/api/v1/courses
 
 ## 10. Stopping the App
 
-- Stop the Go server with `Ctrl+C`.
-- Stop the PostgreSQL container:
+- Stop the stack with `Ctrl+C` in the terminal running `docker-compose up`, or from another terminal:
   ```
   docker-compose down
   ```

@@ -17,6 +17,12 @@ const liquibaseImage = "smartcourse-liquibase:local"
 // and runs it against the running smartcourse-postgres container, applying
 // every changelog under migrations/.
 func RunLiquibaseMigrations(cfg *config.Config) error {
+	// In docker-compose a dedicated liquibase service applies the changelogs
+	// (service containers have no docker CLI to run it from here).
+	if os.Getenv("SKIP_LIQUIBASE") == "true" {
+		return nil
+	}
+
 	liquibaseDir, err := filepath.Abs("liquibase")
 	if err != nil {
 		return fmt.Errorf("failed to resolve liquibase directory: %w", err)

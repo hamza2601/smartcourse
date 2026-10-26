@@ -36,11 +36,14 @@ func (eh *EnrollmentHandler) Enroll(c *gin.Context) {
 	if err != nil {
 		var existsErr *apperrors.EnrollmentAlreadyExistsError
 		var dbErr *apperrors.DatabaseError
+		var upstreamErr *apperrors.UpstreamError
 		switch {
 		case errors.As(err, &existsErr):
 			c.JSON(409, gin.H{"error": "student already enrolled"})
 		case errors.As(err, &dbErr):
 			c.JSON(500, gin.H{"error": "internal server error"})
+		case errors.As(err, &upstreamErr):
+			c.JSON(502, gin.H{"error": "dependent service unavailable"})
 		default:
 			c.JSON(400, gin.H{"error": err.Error()})
 		}

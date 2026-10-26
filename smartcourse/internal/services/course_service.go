@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/google/uuid"
 
@@ -11,17 +12,16 @@ import (
 )
 
 type CourseService struct {
-	CourseRepo *repositories.CourseRepository
-	UserRepo   *repositories.UserRepository
+	CourseRepo     *repositories.CourseRepository
+	UserServiceURL string
+	HTTPClient     *http.Client
 }
 
-func NewCourseService(
-	courseRepo *repositories.CourseRepository,
-	userRepo *repositories.UserRepository,
-) *CourseService {
+func NewCourseService(courseRepo *repositories.CourseRepository, userServiceURL string) *CourseService {
 	return &CourseService{
-		CourseRepo: courseRepo,
-		UserRepo:   userRepo,
+		CourseRepo:     courseRepo,
+		UserServiceURL: userServiceURL,
+		HTTPClient:     newInternalHTTPClient(),
 	}
 }
 
@@ -33,9 +33,9 @@ func (cs *CourseService) CreateCourse(ctx context.Context, name string, instruct
 		return nil, fmt.Errorf("instructor ID must be provided")
 	}
 
-	instructor, err := cs.UserRepo.GetUserByID(ctx, instructorID)
+	instructor, err := cs.fetchUser(ctx, instructorID)
 	if err != nil {
-		return nil, fmt.Errorf("instructor not found")
+		return nil, err
 	}
 
 	if instructor.Role != "instructor" {
@@ -59,4 +59,16 @@ func (cs *CourseService) GetCourse(ctx context.Context, id uuid.UUID) (*domain.C
 
 func (cs *CourseService) ListCourses(ctx context.Context) ([]domain.Course, error) {
 	return cs.CourseRepo.ListAllCourses(ctx)
+}
+
+func (cs *CourseService) fetchUser(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	var user domain.User
+	found, err := fetchInternal(ctx, cs.HTTPClient, userServiceName, fmt.Sprintf("%s/internal/users/%s", cs.UserServiceURL, id), &user)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("instructor not found")
+	}
+	return &user, nil
 }

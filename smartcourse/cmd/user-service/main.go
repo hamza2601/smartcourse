@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
 
 	"smartcourse/internal/config"
 	"smartcourse/internal/database"
@@ -34,10 +35,14 @@ func main() {
 		log.Fatalf("failed to seed admin user: %v", err)
 	}
 
-	router := routes.SetupRoutes(db.DB, cfg)
+	router := routes.SetupUserServiceRoutes(db.DB, cfg)
 
-	log.Printf("Starting server on :%s\n", cfg.ServerPort)
-	if err := router.Run(":" + cfg.ServerPort); err != nil {
+	port := os.Getenv("USER_SERVICE_PORT")
+	if port == "" {
+		port = "8081"
+	}
+	log.Printf("User Service starting on :%s\n", port)
+	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
 }
@@ -53,5 +58,6 @@ func seedAdmin(ctx context.Context, cfg *config.Config, userService *services.Us
 	if err != nil && !errors.As(err, &exists) {
 		return err
 	}
+	log.Println("Admin user ready")
 	return nil
 }

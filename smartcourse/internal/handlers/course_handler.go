@@ -35,11 +35,15 @@ func (ch *CourseHandler) CreateCourse(c *gin.Context) {
 	course, err := ch.Service.CreateCourse(ctx, req.Name, req.InstructorID)
 	if err != nil {
 		var dbErr *apperrors.DatabaseError
-		if errors.As(err, &dbErr) {
+		var upstreamErr *apperrors.UpstreamError
+		switch {
+		case errors.As(err, &dbErr):
 			c.JSON(500, gin.H{"error": "internal server error"})
-			return
+		case errors.As(err, &upstreamErr):
+			c.JSON(502, gin.H{"error": "dependent service unavailable"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
 		}
-		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
