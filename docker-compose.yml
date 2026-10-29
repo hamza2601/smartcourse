@@ -47,7 +47,7 @@ services:
   user-service:
     build:
       context: ./smartcourse
-      dockerfile: cmd/user-service/Dockerfile
+      dockerfile: services/user-service/Dockerfile
     ports:
       - "8081:8081"
     environment:
@@ -63,7 +63,7 @@ services:
   course-service:
     build:
       context: ./smartcourse
-      dockerfile: cmd/course-service/Dockerfile
+      dockerfile: services/course-service/Dockerfile
     ports:
       - "8082:8082"
     environment:
@@ -79,7 +79,7 @@ services:
   enrollment-service:
     build:
       context: ./smartcourse
-      dockerfile: cmd/enrollment-service/Dockerfile
+      dockerfile: services/enrollment-service/Dockerfile
     ports:
       - "8083:8083"
     environment:

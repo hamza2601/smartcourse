@@ -1,0 +1,4 @@
+databaseChangeLog:
+  - include:
+      file: 002-create-course-service-schema.yaml
+      relativeToChangelogFile: true

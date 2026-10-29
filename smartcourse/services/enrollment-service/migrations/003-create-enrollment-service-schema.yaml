@@ -1,0 +1,81 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-enrollment-service-schema
+      author: smartcourse
+      changes:
+        - sql:
+            sql: CREATE SCHEMA IF NOT EXISTS enrollment_service
+        - createTable:
+            schemaName: enrollment_service
+            tableName: enrollments
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: student_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: course_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(50)
+                  defaultValue: active
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: >
+              CREATE UNIQUE INDEX uq_enrollments_active_student_course
+              ON enrollment_service.enrollments (student_id, course_id)
+              WHERE status = 'active'
+        - createTable:
+            schemaName: enrollment_service
+            tableName: outbox_events
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: event_type
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: payload
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: processed_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
