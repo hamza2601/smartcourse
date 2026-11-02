@@ -3,88 +3,163 @@ package services
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
 
 	apperrors "smartcourse/libs/common/errors"
+	"smartcourse/libs/common/outbox"
+	"smartcourse/services/course-service/domain"
 )
 
-func TestFetchUser(t *testing.T) {
-	id := uuid.New()
+type fakeCourseStore struct {
+	courses map[uuid.UUID]*domain.Course
+	events  []outbox.Event
+	created []*domain.Course
+}
 
-	tests := []struct {
-		name       string
-		handler    http.HandlerFunc
-		wantErr    string
-		wantUpstrm bool
-	}{
-		{
-			name: "ok",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/internal/users/"+id.String() {
-					t.Errorf("unexpected path %s", r.URL.Path)
-				}
-				w.Write([]byte(`{"id":"` + id.String() + `","name":"Ivy","email":"ivy@x.com","role":"instructor"}`))
-			},
-		},
-		{
-			name:    "not found",
-			handler: func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) },
-			wantErr: "instructor not found",
-		},
-		{
-			name:       "server error",
-			handler:    func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) },
-			wantUpstrm: true,
-		},
-		{
-			name:       "bad body",
-			handler:    func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("not json")) },
-			wantUpstrm: true,
-		},
+func newFakeCourseStore() *fakeCourseStore {
+	return &fakeCourseStore{courses: map[uuid.UUID]*domain.Course{}}
+}
+
+func (f *fakeCourseStore) CreateCourse(_ context.Context, c *domain.Course, ev outbox.Event) error {
+	f.events = append(f.events, ev)
+	f.created = append(f.created, c)
+	f.courses[c.ID] = c
+	return nil
+}
+
+func (f *fakeCourseStore) GetCourseByID(_ context.Context, id uuid.UUID) (*domain.Course, error) {
+	c, ok := f.courses[id]
+	if !ok {
+		return nil, &apperrors.CourseNotFoundError{CourseID: id}
+	}
+	copy := *c
+	return &copy, nil
+}
+
+func (f *fakeCourseStore) ListAllCourses(context.Context) ([]domain.Course, error) { return nil, nil }
+
+func (f *fakeCourseStore) UpdateCourseStatus(_ context.Context, id uuid.UUID, from, to string, ev outbox.Event) (bool, error) {
+	c, ok := f.courses[id]
+	if !ok || c.Status != from {
+		return false, nil
+	}
+	c.Status = to
+	f.events = append(f.events, ev)
+	return true, nil
+}
+
+func intPtr(n int) *int { return &n }
+
+func TestCreateCourse(t *testing.T) {
+	instructor := uuid.New()
+	store := newFakeCourseStore()
+	svc := NewCourseService(store)
+
+	course, err := svc.CreateCourse(context.Background(), instructor, "Go 101", "intro", intPtr(30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if course.InstructorID != instructor {
+		t.Errorf("instructor = %v, want caller %v", course.InstructorID, instructor)
+	}
+	if course.Status != domain.CourseStatusDraft {
+		t.Errorf("status = %q, want draft", course.Status)
+	}
+	if course.ID == uuid.Nil || course.EnrollmentLimit == nil || *course.EnrollmentLimit != 30 {
+		t.Errorf("unexpected course: %+v", course)
+	}
+	if len(store.created) != 1 {
+		t.Fatalf("want 1 course stored, got %d", len(store.created))
+	}
+	if len(store.events) != 1 || store.events[0].EventType != domain.EventCourseCreated ||
+		store.events[0].AggregateID != course.ID || store.events[0].AggregateType != domain.AggregateTypeCourse {
+		t.Fatalf("want one CourseCreated event for the course, got %+v", store.events)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			srv := httptest.NewServer(tt.handler)
-			defer srv.Close()
-
-			user, err := NewCourseService(nil, srv.URL).fetchUser(context.Background(), id)
-
-			var upstream *apperrors.UpstreamError
-			switch {
-			case tt.wantUpstrm:
-				if !errors.As(err, &upstream) {
-					t.Fatalf("want UpstreamError, got %v", err)
-				}
-			case tt.wantErr != "":
-				if err == nil || err.Error() != tt.wantErr || errors.As(err, &upstream) {
-					t.Fatalf("want plain error %q, got %v", tt.wantErr, err)
-				}
-			default:
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if user.ID != id || user.Role != "instructor" || user.Email != "ivy@x.com" {
-					t.Fatalf("bad user parsed: %+v", user)
-				}
-			}
-		})
+	unlimited, err := svc.CreateCourse(context.Background(), instructor, "Open", "", nil)
+	if err != nil || unlimited.EnrollmentLimit != nil {
+		t.Fatalf("nil limit should mean unlimited: %+v, %v", unlimited, err)
 	}
 }
 
-func TestFetchUserUnreachable(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	url := srv.URL
-	srv.Close()
-
-	_, err := NewCourseService(nil, url).fetchUser(context.Background(), uuid.New())
-
-	var upstream *apperrors.UpstreamError
-	if !errors.As(err, &upstream) {
-		t.Fatalf("want UpstreamError for unreachable service, got %v", err)
+func TestCreateCourseValidation(t *testing.T) {
+	svc := NewCourseService(newFakeCourseStore())
+	cases := []struct {
+		name       string
+		instructor uuid.UUID
+		title      string
+		limit      *int
+	}{
+		{"no instructor", uuid.Nil, "x", nil},
+		{"blank name", uuid.New(), "   ", nil},
+		{"zero limit", uuid.New(), "x", intPtr(0)},
+		{"negative limit", uuid.New(), "x", intPtr(-5)},
 	}
+	for _, tc := range cases {
+		if _, err := svc.CreateCourse(context.Background(), tc.instructor, tc.title, "", tc.limit); err == nil {
+			t.Errorf("%s: want error", tc.name)
+		}
+	}
+}
+
+func TestPublishCourse(t *testing.T) {
+	owner, other := uuid.New(), uuid.New()
+
+	setup := func(status string) (*CourseService, *fakeCourseStore, uuid.UUID) {
+		store := newFakeCourseStore()
+		id := uuid.New()
+		store.courses[id] = &domain.Course{ID: id, InstructorID: owner, Status: status}
+		return NewCourseService(store), store, id
+	}
+
+	t.Run("owner publishes draft", func(t *testing.T) {
+		svc, store, id := setup(domain.CourseStatusDraft)
+		course, err := svc.PublishCourse(context.Background(), id, owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if course.Status != domain.CourseStatusPublished {
+			t.Fatalf("status = %q, want published", course.Status)
+		}
+		if len(store.events) != 1 || store.events[0].EventType != domain.EventCoursePublished || store.events[0].AggregateID != id {
+			t.Fatalf("want one CoursePublished event, got %+v", store.events)
+		}
+	})
+
+	t.Run("not the owner", func(t *testing.T) {
+		svc, store, id := setup(domain.CourseStatusDraft)
+		_, err := svc.PublishCourse(context.Background(), id, other)
+		var notOwned *apperrors.CourseNotOwnedError
+		if !errors.As(err, &notOwned) {
+			t.Fatalf("want CourseNotOwnedError, got %v", err)
+		}
+		if len(store.events) != 0 {
+			t.Fatalf("rejected publish must not emit events, got %d", len(store.events))
+		}
+	})
+
+	for _, status := range []string{domain.CourseStatusPublished, domain.CourseStatusArchived} {
+		t.Run("already "+status, func(t *testing.T) {
+			svc, store, id := setup(status)
+			_, err := svc.PublishCourse(context.Background(), id, owner)
+			var conflict *apperrors.CourseStatusConflictError
+			if !errors.As(err, &conflict) {
+				t.Fatalf("want CourseStatusConflictError, got %v", err)
+			}
+			if len(store.events) != 0 {
+				t.Fatalf("rejected publish must not emit events, got %d", len(store.events))
+			}
+		})
+	}
+
+	t.Run("unknown course", func(t *testing.T) {
+		svc, _, _ := setup(domain.CourseStatusDraft)
+		_, err := svc.PublishCourse(context.Background(), uuid.New(), owner)
+		var notFound *apperrors.CourseNotFoundError
+		if !errors.As(err, &notFound) {
+			t.Fatalf("want CourseNotFoundError, got %v", err)
+		}
+	})
 }

@@ -12,29 +12,31 @@ import (
 	"smartcourse/services/course-service/services"
 )
 
-// Hardcoded for now; resolves via the docker-compose network.
-const userServiceURL = "http://user-service:8081"
-
-func SetupCourseServiceRoutes(db *gorm.DB, cfg *config.Config) *gin.Engine {
-	router := gin.Default()
-
+// SetupCourseServiceRoutes returns the public API router and the internal
+// (/internal/*) router. They are served on separate ports; only the public
+// one may be exposed outside the service network or routed by a gateway.
+func SetupCourseServiceRoutes(db *gorm.DB, cfg *config.Config) (public, internal *gin.Engine) {
 	courseRepo := repositories.NewCourseRepository(db)
 
 	tokenService := services.NewTokenService(cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
-	courseService := services.NewCourseService(courseRepo, userServiceURL)
+	courseService := services.NewCourseService(courseRepo)
 
 	courseHandler := handlers.NewCourseHandler(courseService)
 
-	// Internal API endpoints (for other services)
-	router.GET("/internal/courses/:id", courseHandler.GetCourse)
-
-	// Protected routes (auth required)
-	v1 := router.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
+	public = gin.Default()
+	v1 := public.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
 	{
-		v1.POST("/courses", auth.RequireRole(domain.RoleInstructor, domain.RoleAdmin), courseHandler.CreateCourse)
+		v1.POST("/courses", auth.RequireRole(domain.RoleInstructor), courseHandler.CreateCourse)
+		v1.POST("/courses/:id/publish", auth.RequireRole(domain.RoleInstructor), courseHandler.PublishCourse)
 		v1.GET("/courses/:id", courseHandler.GetCourse)
 		v1.GET("/courses", courseHandler.ListCourses)
 	}
 
-	return router
+	internal = gin.Default()
+	internalAPI := internal.Group("/internal", auth.InternalAuth(cfg.InternalAPIKey))
+	{
+		internalAPI.GET("/courses/:id", courseHandler.GetCourse)
+	}
+
+	return public, internal
 }

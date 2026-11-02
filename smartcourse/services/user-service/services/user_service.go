@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	apperrors "smartcourse/libs/common/errors"
+	"smartcourse/libs/common/outbox"
 	"smartcourse/services/user-service/domain"
 	"smartcourse/services/user-service/repositories"
 )
@@ -39,6 +40,7 @@ func (us *UserService) RegisterUser(ctx context.Context, name, email, role, pass
 	}
 
 	user := &domain.User{
+		ID:    uuid.New(),
 		Name:  name,
 		Email: email,
 		Role:  role,
@@ -53,7 +55,17 @@ func (us *UserService) RegisterUser(ctx context.Context, name, email, role, pass
 		}
 		user.PasswordHash = string(hash)
 	}
-	if err := us.Repo.CreateUser(ctx, user); err != nil {
+
+	event, err := outbox.NewEvent(domain.AggregateTypeUser, user.ID, domain.EventUserRegistered, domain.UserRegisteredPayload{
+		UserID: user.ID,
+		Email:  user.Email,
+		Name:   user.Name,
+		Role:   user.Role,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := us.Repo.CreateUser(ctx, user, event); err != nil {
 		return nil, err
 	}
 	return user, nil

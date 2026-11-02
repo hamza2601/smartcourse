@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	apperrors "smartcourse/libs/common/errors"
+	"smartcourse/libs/common/outbox"
 	"smartcourse/services/course-service/domain"
 	"smartcourse/services/course-service/mappers"
 	"smartcourse/services/course-service/persistence"
@@ -21,10 +22,21 @@ func NewCourseRepository(db *gorm.DB) *CourseRepository {
 	return &CourseRepository{DB: db}
 }
 
-func (cr *CourseRepository) CreateCourse(ctx context.Context, course *domain.Course) error {
+// CreateCourse inserts the course and its CourseCreated outbox event in one
+// transaction: either both are stored or neither is.
+func (cr *CourseRepository) CreateCourse(ctx context.Context, course *domain.Course, event outbox.Event) error {
 	courseDB := mappers.CourseToPersistence(course)
-	courseDB.ID = uuid.New()
-	if err := cr.DB.WithContext(ctx).Create(courseDB).Error; err != nil {
+	if courseDB.ID == uuid.Nil {
+		courseDB.ID = uuid.New()
+	}
+
+	err := cr.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(courseDB).Error; err != nil {
+			return err
+		}
+		return outbox.Insert(tx, persistence.OutboxTable, event)
+	})
+	if err != nil {
 		return &apperrors.DatabaseError{Operation: "create course", Err: err}
 	}
 	*course = *mappers.CourseDBToDomain(courseDB)
@@ -56,6 +68,34 @@ func (cr *CourseRepository) ListAllCourses(ctx context.Context) ([]domain.Course
 		return nil, &apperrors.DatabaseError{Operation: "list courses", Err: err}
 	}
 	return coursesToDomain(coursesDB), nil
+}
+
+// UpdateCourseStatus is a conditional update so concurrent transitions cannot
+// both succeed. The outbox event is written in the same transaction, and only
+// if the status actually changed; it reports false when the course was not in
+// status `from`.
+func (cr *CourseRepository) UpdateCourseStatus(ctx context.Context, id uuid.UUID, from, to string, event outbox.Event) (bool, error) {
+	var updated bool
+	err := cr.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&persistence.CourseDB{}).
+			Where("id = ? AND status = ?", id, from).
+			Update("status", to)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+		if err := outbox.Insert(tx, persistence.OutboxTable, event); err != nil {
+			return err
+		}
+		updated = true
+		return nil
+	})
+	if err != nil {
+		return false, &apperrors.DatabaseError{Operation: "update course status", Err: err}
+	}
+	return updated, nil
 }
 
 func coursesToDomain(coursesDB []persistence.CourseDB) []domain.Course {

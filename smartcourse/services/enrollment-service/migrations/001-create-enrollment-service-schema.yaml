@@ -1,6 +1,6 @@
 databaseChangeLog:
   - changeSet:
-      id: 003-create-enrollment-service-schema
+      id: 001-create-enrollment-service-schema
       author: smartcourse
       changes:
         - sql:
@@ -15,6 +15,7 @@ databaseChangeLog:
                   constraints:
                     primaryKey: true
                     nullable: false
+              # student and course live in other schemas; no cross-schema foreign keys.
               - column:
                   name: student_id
                   type: UUID
@@ -48,34 +49,3 @@ databaseChangeLog:
               CREATE UNIQUE INDEX uq_enrollments_active_student_course
               ON enrollment_service.enrollments (student_id, course_id)
               WHERE status = 'active'
-        - createTable:
-            schemaName: enrollment_service
-            tableName: outbox_events
-            columns:
-              - column:
-                  name: id
-                  type: UUID
-                  constraints:
-                    primaryKey: true
-                    nullable: false
-              - column:
-                  name: event_type
-                  type: VARCHAR(255)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: payload
-                  type: JSONB
-                  constraints:
-                    nullable: false
-              - column:
-                  name: created_at
-                  type: TIMESTAMP
-                  defaultValueComputed: now()
-                  constraints:
-                    nullable: false
-              - column:
-                  name: processed_at
-                  type: TIMESTAMP
-                  constraints:
-                    nullable: true

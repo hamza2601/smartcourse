@@ -46,6 +46,17 @@ func AuthMiddleware(verify VerifyFunc) gin.HandlerFunc {
 	}
 }
 
+// UserIDFrom returns the caller's user ID as verified by AuthMiddleware. This
+// is the only trusted source of "who is calling"; IDs in request bodies are not.
+func UserIDFrom(c *gin.Context) (uuid.UUID, bool) {
+	v, ok := c.Get(ContextUserID)
+	if !ok {
+		return uuid.Nil, false
+	}
+	id, ok := v.(uuid.UUID)
+	return id, ok && id != uuid.Nil
+}
+
 // RequireRole must run after AuthMiddleware.
 func RequireRole(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {

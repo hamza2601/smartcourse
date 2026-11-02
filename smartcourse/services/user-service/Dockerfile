@@ -19,5 +19,5 @@ WORKDIR /root/
 
 COPY --from=builder /app/services/user-service/user-service .
 
-EXPOSE 8081
+EXPOSE 8081 9081
 CMD ["./user-service"]

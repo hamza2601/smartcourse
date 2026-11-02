@@ -1,0 +1,68 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-course-service-schema
+      author: smartcourse
+      changes:
+        - sql:
+            sql: CREATE SCHEMA IF NOT EXISTS course_service
+        - createTable:
+            schemaName: course_service
+            tableName: courses
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+                  defaultValueComputed: "''"
+                  constraints:
+                    nullable: false
+              # Owner lives in user_service; no cross-schema foreign key.
+              - column:
+                  name: instructor_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  defaultValue: draft
+                  constraints:
+                    nullable: false
+              # NULL means unlimited.
+              - column:
+                  name: enrollment_limit
+                  type: INT
+                  constraints:
+                    nullable: true
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: >
+              ALTER TABLE course_service.courses
+              ADD CONSTRAINT chk_courses_status
+              CHECK (status IN ('draft', 'published', 'archived'))
+        - sql:
+            sql: >
+              ALTER TABLE course_service.courses
+              ADD CONSTRAINT chk_courses_enrollment_limit
+              CHECK (enrollment_limit > 0)

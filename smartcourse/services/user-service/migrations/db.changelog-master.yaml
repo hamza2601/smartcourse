@@ -3,8 +3,11 @@ databaseChangeLog:
       file: 001-create-user-service-schema.yaml
       relativeToChangelogFile: true
   - include:
-      file: 004-add-refresh-tokens-table.yaml
+      file: 002-add-refresh-tokens-table.yaml
       relativeToChangelogFile: true
   - include:
-      file: 005-add-user-password-hash.yaml
+      file: 003-add-user-password-hash.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 004-create-outbox-events-table.yaml
       relativeToChangelogFile: true

@@ -13,7 +13,14 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
-	ServerPort string
+
+	// Port serves the public API; InternalPort serves /internal/* only and
+	// must never be exposed outside the service network.
+	Port           string
+	InternalPort   string
+	InternalAPIKey string
+
+	Outbox OutboxConfig
 
 	Env           string
 	JWT           JWTConfig
@@ -29,6 +36,14 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	outboxCfg, err := loadOutboxConfig()
+	if err != nil {
+		return nil, err
+	}
+	internalKey, err := loadInternalAPIKey(env)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Config{
 		DBHost:     getEnv("DB_HOST", "localhost"),
@@ -36,7 +51,12 @@ func LoadConfig() (*Config, error) {
 		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: getEnv("DB_PASSWORD", "password"),
 		DBName:     getEnv("DB_NAME", "smartcourse_db"),
-		ServerPort: getEnv("SERVER_PORT", "8080"),
+
+		Port:           getEnv("PORT", "8082"),
+		InternalPort:   getEnv("INTERNAL_PORT", "9082"),
+		InternalAPIKey: internalKey,
+
+		Outbox: outboxCfg,
 
 		Env:           env,
 		JWT:           jwtCfg,

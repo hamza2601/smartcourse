@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"smartcourse/libs/common/auth"
 	apperrors "smartcourse/libs/common/errors"
 )
 
@@ -16,8 +17,25 @@ const (
 	maxBodyBytes = 1 << 20
 )
 
-func NewClient() *http.Client {
-	return &http.Client{Timeout: callTimeout}
+// NewClient returns a client for service-to-service calls; every request it
+// sends carries the internal API key in X-Internal-Token.
+func NewClient(internalAPIKey string) *http.Client {
+	return &http.Client{
+		Timeout:   callTimeout,
+		Transport: &internalKeyTransport{apiKey: internalAPIKey, base: http.DefaultTransport},
+	}
+}
+
+type internalKeyTransport struct {
+	apiKey string
+	base   http.RoundTripper
+}
+
+func (t *internalKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// A RoundTripper must not modify the caller's request.
+	req = req.Clone(req.Context())
+	req.Header.Set(auth.InternalTokenHeader, t.apiKey)
+	return t.base.RoundTrip(req)
 }
 
 // FetchInternal GETs url and decodes a 200 JSON body into out. A 404 is a

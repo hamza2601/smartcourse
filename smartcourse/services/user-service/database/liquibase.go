@@ -9,15 +9,17 @@ import (
 	"smartcourse/services/user-service/config"
 )
 
-const liquibasePostgresContainer = "smartcourse-postgres"
-const liquibaseImage = "smartcourse-liquibase:local"
+const (
+	liquibasePostgresContainer = "smartcourse-postgres"
+	liquibaseImage             = "smartcourse-liquibase-user:local"
+)
 
-// RunLiquibaseMigrations builds a Liquibase image with the PostgreSQL JDBC
-// driver baked in (the upstream liquibase/liquibase image ships without it)
-// and runs it against the running smartcourse-postgres container, applying
-// every changelog under migrations/.
+// RunLiquibaseMigrations applies this service's changelogs when running
+// outside docker-compose: it builds the service's Liquibase image (driver +
+// migrate.sh, which owns the schema/tracking-table setup) and runs it against
+// the smartcourse-postgres container.
 func RunLiquibaseMigrations(cfg *config.Config) error {
-	// In docker-compose a dedicated liquibase service applies the changelogs
+	// In docker-compose a dedicated liquibase-user job applies the changelogs
 	// (service containers have no docker CLI to run it from here).
 	if os.Getenv("SKIP_LIQUIBASE") == "true" {
 		return nil
@@ -39,19 +41,13 @@ func RunLiquibaseMigrations(cfg *config.Config) error {
 		return fmt.Errorf("failed to build liquibase image: %w", err)
 	}
 
-	jdbcURL := fmt.Sprintf("jdbc:postgresql://localhost:%s/%s", cfg.DBPort, cfg.DBName)
-
 	runCmd := exec.Command("docker", "run", "--rm",
 		"--network", "container:"+liquibasePostgresContainer,
-		"-v", migrationsDir+":/liquibase/changelog",
+		"-v", migrationsDir+":/liquibase/changelog:ro",
+		"-e", fmt.Sprintf("LIQUIBASE_COMMAND_URL=jdbc:postgresql://localhost:%s/%s", cfg.DBPort, cfg.DBName),
+		"-e", "LIQUIBASE_COMMAND_USERNAME="+cfg.DBUser,
+		"-e", "LIQUIBASE_COMMAND_PASSWORD="+cfg.DBPassword,
 		liquibaseImage,
-		// Relative path: lets the entrypoint cd into /liquibase/changelog
-		// and resolves the changelog from the filesystem, not the classpath.
-		"--changelog-file=db.changelog-master.yaml",
-		"--url="+jdbcURL,
-		"--username="+cfg.DBUser,
-		"--password="+cfg.DBPassword,
-		"update",
 	)
 	runCmd.Stdout = os.Stdout
 	runCmd.Stderr = os.Stderr

@@ -19,5 +19,5 @@ WORKDIR /root/
 
 COPY --from=builder /app/services/course-service/course-service .
 
-EXPOSE 8082
+EXPOSE 8082 9082
 CMD ["./course-service"]

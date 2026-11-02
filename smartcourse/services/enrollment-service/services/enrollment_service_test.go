@@ -2,174 +2,192 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"smartcourse/libs/common/auth"
 	apperrors "smartcourse/libs/common/errors"
+	"smartcourse/libs/common/outbox"
 	"smartcourse/services/enrollment-service/domain"
 )
 
-type fakeEnrollmentStore struct {
-	existing *domain.Enrollment
-	created  []*domain.Enrollment
-}
+const testInternalKey = "test-internal-key"
 
-func (f *fakeEnrollmentStore) CreateEnrollment(_ context.Context, e *domain.Enrollment) error {
-	f.created = append(f.created, e)
-	return nil
+type fakeEnrollmentStore struct {
+	enrollErr error
+	enrolled  []*domain.Enrollment
+	capacity  *int
+	events    []outbox.Event
 }
 
 func (f *fakeEnrollmentStore) GetEnrollmentByID(context.Context, uuid.UUID) (*domain.Enrollment, error) {
 	return nil, nil
 }
 
-func (f *fakeEnrollmentStore) GetEnrollmentByStudentCourse(context.Context, uuid.UUID, uuid.UUID) (*domain.Enrollment, error) {
-	return f.existing, nil
+func (f *fakeEnrollmentStore) Enroll(_ context.Context, e *domain.Enrollment, capacity *int, ev outbox.Event) error {
+	if f.enrollErr != nil {
+		return f.enrollErr
+	}
+	f.enrolled = append(f.enrolled, e)
+	f.capacity = capacity
+	f.events = append(f.events, ev)
+	return nil
 }
 
-// fakeServer answers every request with the given status; a 200 returns body.
-func fakeServer(status int, body string, hits *atomic.Int32) *httptest.Server {
+// courseServer fakes course-service's /internal/courses/:id. It rejects calls
+// without the internal key, like the real InternalAuth middleware does.
+func courseServer(t *testing.T, status int, course *domain.Course) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
+		if r.Header.Get(auth.InternalTokenHeader) != testInternalKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if course != nil && r.URL.Path != "/internal/courses/"+course.ID.String() {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
 		w.WriteHeader(status)
 		if status == http.StatusOK {
-			w.Write([]byte(body))
+			json.NewEncoder(w).Encode(course)
 		}
 	}))
 }
 
+func intPtr(n int) *int { return &n }
+
 func TestEnrollStudent(t *testing.T) {
 	studentID, courseID := uuid.New(), uuid.New()
-	courseBody := `{"id":"` + courseID.String() + `","name":"Go","status":"draft"}`
-	userBody := `{"id":"` + studentID.String() + `","name":"Stu","email":"stu@x.com","role":"student"}`
+	published := &domain.Course{ID: courseID, Status: domain.CourseStatusPublished, EnrollmentLimit: intPtr(25)}
+	draft := &domain.Course{ID: courseID, Status: domain.CourseStatusDraft}
 
 	tests := []struct {
-		name         string
-		courseStatus int
-		userStatus   int
-		existing     *domain.Enrollment
-		courseDown   bool
-
-		wantEnrolled bool
-		wantMsg      string // plain business error
-		wantUpstream bool
-		wantExists   bool
-		wantUserHits int32 // user-service must not be called if the course check already failed
+		name       string
+		status     int
+		course     *domain.Course
+		courseDown bool
+		storeErr   error
+		check      func(t *testing.T, e *domain.Enrollment, err error, store *fakeEnrollmentStore)
 	}{
 		{
-			name: "success", courseStatus: 200, userStatus: 200,
-			wantEnrolled: true, wantUserHits: 1,
+			name: "success passes the course limit to the store", status: 200, course: published,
+			check: func(t *testing.T, e *domain.Enrollment, err error, store *fakeEnrollmentStore) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if e.StudentID != studentID || e.CourseID != courseID || e.Status != domain.EnrollmentStatusActive {
+					t.Fatalf("bad enrollment: %+v", e)
+				}
+				if len(store.enrolled) != 1 || store.capacity == nil || *store.capacity != 25 {
+					t.Fatalf("store got %d enrollments, capacity %v", len(store.enrolled), store.capacity)
+				}
+				if len(store.events) != 1 {
+					t.Fatalf("want 1 event, got %d", len(store.events))
+				}
+				ev := store.events[0]
+				var p domain.EnrollmentCreatedPayload
+				if err := json.Unmarshal(ev.Payload, &p); err != nil {
+					t.Fatal(err)
+				}
+				if ev.EventType != domain.EventEnrollmentCreated || ev.AggregateID != e.ID ||
+					p.StudentID != studentID || p.CourseID != courseID || p.EnrollmentID != e.ID {
+					t.Fatalf("bad EnrollmentCreated event: %+v payload %+v", ev, p)
+				}
+			},
 		},
 		{
-			name: "course not found", courseStatus: 404, userStatus: 200,
-			wantMsg: "course not found", wantUserHits: 0,
+			name: "course not found", status: 404, course: published,
+			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
+				var upstream *apperrors.UpstreamError
+				if err == nil || err.Error() != "course not found" || errors.As(err, &upstream) {
+					t.Fatalf("want plain 'course not found', got %v", err)
+				}
+			},
 		},
 		{
-			name: "student not found", courseStatus: 200, userStatus: 404,
-			wantMsg: "student not found", wantUserHits: 1,
+			name: "course not published", status: 200, course: draft,
+			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
+				var notPublished *apperrors.CourseNotPublishedError
+				if !errors.As(err, &notPublished) {
+					t.Fatalf("want CourseNotPublishedError, got %v", err)
+				}
+			},
 		},
 		{
-			name: "course-service returns 500", courseStatus: 500, userStatus: 200,
-			wantUpstream: true, wantUserHits: 0,
+			name: "course-service returns 500", status: 500, course: published,
+			check: wantUpstream,
 		},
 		{
-			name: "course-service unreachable", courseStatus: 200, userStatus: 200, courseDown: true,
-			wantUpstream: true, wantUserHits: 0,
+			name: "course-service unreachable", status: 200, course: published, courseDown: true,
+			check: wantUpstream,
 		},
 		{
-			name: "user-service returns 500", courseStatus: 200, userStatus: 500,
-			wantUpstream: true, wantUserHits: 1,
+			name: "course full", status: 200, course: published, storeErr: &apperrors.CourseFullError{CourseID: courseID},
+			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
+				var full *apperrors.CourseFullError
+				if !errors.As(err, &full) {
+					t.Fatalf("want CourseFullError, got %v", err)
+				}
+			},
 		},
 		{
-			name: "already enrolled", courseStatus: 200, userStatus: 200,
-			existing:   &domain.Enrollment{Status: "active"},
-			wantExists: true, wantUserHits: 1,
+			name: "already enrolled", status: 200, course: published,
+			storeErr: &apperrors.EnrollmentAlreadyExistsError{StudentID: studentID, CourseID: courseID},
+			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
+				var exists *apperrors.EnrollmentAlreadyExistsError
+				if !errors.As(err, &exists) {
+					t.Fatalf("want EnrollmentAlreadyExistsError, got %v", err)
+				}
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var courseHits, userHits atomic.Int32
-			courseSrv := fakeServer(tt.courseStatus, courseBody, &courseHits)
-			userSrv := fakeServer(tt.userStatus, userBody, &userHits)
-			defer userSrv.Close()
+			srv := courseServer(t, tt.status, tt.course)
 			if tt.courseDown {
-				courseSrv.Close()
+				srv.Close()
 			} else {
-				defer courseSrv.Close()
+				defer srv.Close()
 			}
+			store := &fakeEnrollmentStore{enrollErr: tt.storeErr}
+			svc := NewEnrollmentService(store, srv.URL, testInternalKey)
 
-			store := &fakeEnrollmentStore{existing: tt.existing}
-			svc := NewEnrollmentService(store, courseSrv.URL, userSrv.URL)
-
-			enrollment, err := svc.EnrollStudent(context.Background(), studentID, courseID)
-
-			var upstream *apperrors.UpstreamError
-			var exists *apperrors.EnrollmentAlreadyExistsError
-			switch {
-			case tt.wantEnrolled:
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if enrollment.StudentID != studentID || enrollment.CourseID != courseID || enrollment.Status != "active" {
-					t.Fatalf("bad enrollment: %+v", enrollment)
-				}
-				if len(store.created) != 1 {
-					t.Fatalf("want 1 enrollment saved, got %d", len(store.created))
-				}
-			case tt.wantUpstream:
-				if !errors.As(err, &upstream) {
-					t.Fatalf("want UpstreamError, got %v", err)
-				}
-			case tt.wantExists:
-				if !errors.As(err, &exists) {
-					t.Fatalf("want EnrollmentAlreadyExistsError, got %v", err)
-				}
-			default:
-				if err == nil || err.Error() != tt.wantMsg || errors.As(err, &upstream) {
-					t.Fatalf("want plain business error %q, got %v", tt.wantMsg, err)
-				}
-			}
-
-			if !tt.wantEnrolled && len(store.created) != 0 {
-				t.Fatalf("nothing should be saved on failure, got %d", len(store.created))
-			}
-			if got := userHits.Load(); got != tt.wantUserHits {
-				t.Fatalf("user-service hits = %d, want %d", got, tt.wantUserHits)
+			e, err := svc.EnrollStudent(context.Background(), studentID, courseID)
+			tt.check(t, e, err, store)
+			if err != nil && tt.storeErr == nil && len(store.enrolled) != 0 {
+				t.Fatal("nothing should reach the store when the course check fails")
 			}
 		})
 	}
 }
 
-func TestEnrollStudentCallsInternalPaths(t *testing.T) {
-	studentID, courseID := uuid.New(), uuid.New()
-	var coursePath, userPath string
-
-	courseSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		coursePath = r.URL.Path
-		w.Write([]byte(`{"id":"` + courseID.String() + `"}`))
-	}))
-	defer courseSrv.Close()
-	userSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userPath = r.URL.Path
-		w.Write([]byte(`{"id":"` + studentID.String() + `","role":"student"}`))
-	}))
-	defer userSrv.Close()
-
-	svc := NewEnrollmentService(&fakeEnrollmentStore{}, courseSrv.URL, userSrv.URL)
-	if _, err := svc.EnrollStudent(context.Background(), studentID, courseID); err != nil {
-		t.Fatal(err)
+func wantUpstream(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
+	var upstream *apperrors.UpstreamError
+	if !errors.As(err, &upstream) {
+		t.Fatalf("want UpstreamError, got %v", err)
 	}
+}
 
-	if want := "/internal/courses/" + courseID.String(); coursePath != want {
-		t.Errorf("course path = %q, want %q", coursePath, want)
+func TestEnrollStudentWrongInternalKeyIsUpstreamError(t *testing.T) {
+	courseID := uuid.New()
+	srv := courseServer(t, 200, &domain.Course{ID: courseID, Status: domain.CourseStatusPublished})
+	defer srv.Close()
+
+	svc := NewEnrollmentService(&fakeEnrollmentStore{}, srv.URL, "wrong-key")
+	_, err := svc.EnrollStudent(context.Background(), uuid.New(), courseID)
+	wantUpstream(t, nil, err, nil)
+}
+
+func TestEnrollStudentValidation(t *testing.T) {
+	svc := NewEnrollmentService(&fakeEnrollmentStore{}, "http://unused", testInternalKey)
+	if _, err := svc.EnrollStudent(context.Background(), uuid.Nil, uuid.New()); err == nil {
+		t.Error("nil student: want error")
 	}
-	if want := "/internal/users/" + studentID.String(); userPath != want {
-		t.Errorf("user path = %q, want %q", userPath, want)
+	if _, err := svc.EnrollStudent(context.Background(), uuid.New(), uuid.Nil); err == nil {
+		t.Error("nil course: want error")
 	}
 }

@@ -1,11 +1,11 @@
 databaseChangeLog:
   - changeSet:
-      id: 004-add-refresh-tokens-table
+      id: 003-create-outbox-events-table
       author: smartcourse
       changes:
         - createTable:
-            schemaName: user_service
-            tableName: refresh_tokens
+            schemaName: course_service
+            tableName: outbox_events
             columns:
               - column:
                   name: id
@@ -14,29 +14,23 @@ databaseChangeLog:
                     primaryKey: true
                     nullable: false
               - column:
-                  name: user_id
+                  name: aggregate_type
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: aggregate_id
                   type: UUID
                   constraints:
                     nullable: false
               - column:
-                  name: token_hash
-                  type: VARCHAR(128)
-                  constraints:
-                    nullable: false
-                    unique: true
-              - column:
-                  name: family_id
-                  type: UUID
+                  name: event_type
+                  type: VARCHAR(255)
                   constraints:
                     nullable: false
               - column:
-                  name: revoked_at
-                  type: TIMESTAMP
-                  constraints:
-                    nullable: true
-              - column:
-                  name: expires_at
-                  type: TIMESTAMP
+                  name: payload
+                  type: JSONB
                   constraints:
                     nullable: false
               - column:
@@ -45,12 +39,14 @@ databaseChangeLog:
                   defaultValueComputed: now()
                   constraints:
                     nullable: false
-        - createIndex:
-            schemaName: user_service
-            tableName: refresh_tokens
-            indexName: idx_refresh_tokens_user_family
-            columns:
               - column:
-                  name: user_id
-              - column:
-                  name: family_id
+                  name: processed_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
+        # The relay only ever scans unprocessed rows in created_at order.
+        - sql:
+            sql: >
+              CREATE INDEX idx_outbox_events_unprocessed
+              ON course_service.outbox_events (created_at)
+              WHERE processed_at IS NULL

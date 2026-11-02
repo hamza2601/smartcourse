@@ -1,6 +1,6 @@
 databaseChangeLog:
   - changeSet:
-      id: 004-add-refresh-tokens-table
+      id: 002-add-refresh-tokens-table
       author: smartcourse
       changes:
         - createTable:

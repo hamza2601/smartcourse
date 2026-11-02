@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	apperrors "smartcourse/libs/common/errors"
+	"smartcourse/libs/common/outbox"
 	"smartcourse/services/user-service/domain"
 	"smartcourse/services/user-service/mappers"
 	"smartcourse/services/user-service/persistence"
@@ -21,15 +22,35 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{DB: db}
 }
 
-func (ur *UserRepository) CreateUser(ctx context.Context, user *domain.User) error {
+// CreateUser inserts the user and its UserRegistered outbox event in one
+// transaction: either both are stored or neither is.
+func (ur *UserRepository) CreateUser(ctx context.Context, user *domain.User, event outbox.Event) error {
 	userDB := mappers.UserToPersistence(user)
-	userDB.ID = uuid.New()
-	if err := ur.DB.WithContext(ctx).Create(userDB).Error; err != nil {
-		if isDuplicateKey(err) {
-			return &apperrors.UserAlreadyExistsError{Email: user.Email}
+	if userDB.ID == uuid.Nil {
+		userDB.ID = uuid.New()
+	}
+
+	err := ur.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(userDB).Error; err != nil {
+			if isDuplicateKey(err) {
+				return &apperrors.UserAlreadyExistsError{Email: user.Email}
+			}
+			return &apperrors.DatabaseError{Operation: "create user", Err: err}
+		}
+		if err := outbox.Insert(tx, persistence.OutboxTable, event); err != nil {
+			return &apperrors.DatabaseError{Operation: "write user outbox event", Err: err}
+		}
+		return nil
+	})
+	if err != nil {
+		var exists *apperrors.UserAlreadyExistsError
+		var dbErr *apperrors.DatabaseError
+		if errors.As(err, &exists) || errors.As(err, &dbErr) {
+			return err
 		}
 		return &apperrors.DatabaseError{Operation: "create user", Err: err}
 	}
+
 	*user = *mappers.UserDBToDomain(userDB)
 	return nil
 }

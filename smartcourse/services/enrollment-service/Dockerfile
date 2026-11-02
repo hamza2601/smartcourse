@@ -19,5 +19,5 @@ WORKDIR /root/
 
 COPY --from=builder /app/services/enrollment-service/enrollment-service .
 
-EXPOSE 8083
+EXPOSE 8083 9083
 CMD ["./enrollment-service"]

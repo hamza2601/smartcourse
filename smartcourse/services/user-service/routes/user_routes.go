@@ -12,9 +12,10 @@ import (
 	"smartcourse/services/user-service/services"
 )
 
-func SetupUserServiceRoutes(db *gorm.DB, cfg *config.Config) *gin.Engine {
-	router := gin.Default()
-
+// SetupUserServiceRoutes returns the public API router and the internal
+// (/internal/*) router. They are served on separate ports; only the public
+// one may be exposed outside the service network or routed by a gateway.
+func SetupUserServiceRoutes(db *gorm.DB, cfg *config.Config) (public, internal *gin.Engine) {
 	userRepo := repositories.NewUserRepository(db)
 	refreshTokenRepo := repositories.NewRefreshTokenRepository(db)
 
@@ -25,19 +26,21 @@ func SetupUserServiceRoutes(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	userHandler := handlers.NewUserHandler(userService)
 	authHandler := handlers.NewAuthHandler(authService)
 
-	// Public routes (no auth required)
-	router.POST("/auth/login", authHandler.Login)
-	router.POST("/auth/refresh", authHandler.Refresh)
+	public = gin.Default()
+	public.POST("/auth/login", authHandler.Login)
+	public.POST("/auth/refresh", authHandler.Refresh)
 
-	// Internal API endpoints (for other services)
-	router.GET("/internal/users/:id", userHandler.GetUser)
-
-	// Protected routes (auth required)
-	v1 := router.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
+	v1 := public.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
 	{
 		v1.POST("/users", auth.RequireRole(domain.RoleAdmin), userHandler.RegisterUser)
 		v1.GET("/users/:id", userHandler.GetUser)
 	}
 
-	return router
+	internal = gin.Default()
+	internalAPI := internal.Group("/internal", auth.InternalAuth(cfg.InternalAPIKey))
+	{
+		internalAPI.GET("/users/:id", userHandler.GetUser)
+	}
+
+	return public, internal
 }

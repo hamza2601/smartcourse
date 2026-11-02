@@ -1,0 +1,68 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-lesson-progress-table
+      author: smartcourse
+      changes:
+        - createTable:
+            schemaName: enrollment_service
+            tableName: lesson_progress
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: enrollment_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              # Lesson lives in course_service; plain UUID, no cross-schema foreign key.
+              - column:
+                  name: lesson_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  defaultValue: not_started
+                  constraints:
+                    nullable: false
+              - column:
+                  name: completed_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            constraintName: fk_lesson_progress_enrollment
+            baseTableSchemaName: enrollment_service
+            baseTableName: lesson_progress
+            baseColumnNames: enrollment_id
+            referencedTableSchemaName: enrollment_service
+            referencedTableName: enrollments
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addUniqueConstraint:
+            constraintName: uq_lesson_progress_enrollment_lesson
+            schemaName: enrollment_service
+            tableName: lesson_progress
+            columnNames: enrollment_id, lesson_id
+        - sql:
+            sql: >
+              ALTER TABLE enrollment_service.lesson_progress
+              ADD CONSTRAINT chk_lesson_progress_status
+              CHECK (status IN ('not_started', 'in_progress', 'completed'))

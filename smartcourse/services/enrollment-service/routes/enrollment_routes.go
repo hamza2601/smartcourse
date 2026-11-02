@@ -11,29 +11,29 @@ import (
 	"smartcourse/services/enrollment-service/services"
 )
 
-// Hardcoded for now; resolves via the docker-compose network.
-const userServiceURL = "http://user-service:8081"
-const courseServiceURL = "http://course-service:8082"
-
-func SetupEnrollmentServiceRoutes(db *gorm.DB, cfg *config.Config) *gin.Engine {
-	router := gin.Default()
-
+// SetupEnrollmentServiceRoutes returns the public API router and the internal
+// (/internal/*) router. They are served on separate ports; only the public
+// one may be exposed outside the service network or routed by a gateway.
+func SetupEnrollmentServiceRoutes(db *gorm.DB, cfg *config.Config) (public, internal *gin.Engine) {
 	enrollmentRepo := repositories.NewEnrollmentRepository(db)
 
 	tokenService := services.NewTokenService(cfg.JWT.AccessTokenExpiry, cfg.JWT.RefreshTokenExpiry)
-	enrollmentService := services.NewEnrollmentService(enrollmentRepo, courseServiceURL, userServiceURL)
+	enrollmentService := services.NewEnrollmentService(enrollmentRepo, cfg.CourseServiceURL, cfg.InternalAPIKey)
 
 	enrollmentHandler := handlers.NewEnrollmentHandler(enrollmentService)
 
-	// Internal API endpoints (for other services)
-	router.GET("/internal/enrollments/:id", enrollmentHandler.GetEnrollment)
-
-	// Protected routes (auth required)
-	v1 := router.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
+	public = gin.Default()
+	v1 := public.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
 	{
 		v1.POST("/enrollments", enrollmentHandler.Enroll)
 		v1.GET("/enrollments/:id", enrollmentHandler.GetEnrollment)
 	}
 
-	return router
+	internal = gin.Default()
+	internalAPI := internal.Group("/internal", auth.InternalAuth(cfg.InternalAPIKey))
+	{
+		internalAPI.GET("/enrollments/:id", enrollmentHandler.GetEnrollment)
+	}
+
+	return public, internal
 }

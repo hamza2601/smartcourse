@@ -6,9 +6,15 @@ x-service-env: &service-env
   DB_NAME: smartcourse_db
   ENV: dev
   SKIP_LIQUIBASE: "true"
-  USER_SERVICE_PORT: "8081"
-  COURSE_SERVICE_PORT: "8082"
-  ENROLLMENT_SERVICE_PORT: "8083"
+  # Shared service-to-service key guarding /internal/*; must match in every service.
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-api-key}
+
+# Each service owns its migrations: a one-shot Liquibase job per service applies
+# only that service's changelogs, into (and tracked within) its own schema.
+x-liquibase-env: &liquibase-env
+  LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/smartcourse_db
+  LIQUIBASE_COMMAND_USERNAME: postgres
+  LIQUIBASE_COMMAND_PASSWORD: password
 
 services:
   postgres:
@@ -21,43 +27,66 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # Check over TCP: on a fresh volume the init-time server listens only on
+      # the unix socket, so a socket check reports healthy before clients can connect.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d smartcourse_db -h 127.0.0.1"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # One-shot: applies the Liquibase changelogs, then exits. Services wait for it.
-  liquibase:
-    build: ./smartcourse/liquibase
+  liquibase-user:
+    build: ./smartcourse/services/user-service/liquibase
     volumes:
-      - ./smartcourse/migrations:/liquibase/changelog
-    command:
-      - --changelog-file=db.changelog-master.yaml
-      - --url=jdbc:postgresql://postgres:5432/smartcourse_db
-      - --username=postgres
-      - --password=password
-      - update
+      - ./smartcourse/services/user-service/migrations:/liquibase/changelog:ro
+    environment: *liquibase-env
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
+  liquibase-course:
+    build: ./smartcourse/services/course-service/liquibase
+    volumes:
+      - ./smartcourse/services/course-service/migrations:/liquibase/changelog:ro
+    environment: *liquibase-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  liquibase-enrollment:
+    build: ./smartcourse/services/enrollment-service/liquibase
+    volumes:
+      - ./smartcourse/services/enrollment-service/migrations:/liquibase/changelog:ro
+    environment: *liquibase-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Each service has two listeners: PORT (public API, published to the host)
+  # and INTERNAL_PORT (/internal/* only, reachable on this network only and
+  # never to be routed by an API gateway).
   user-service:
     build:
       context: ./smartcourse
       dockerfile: services/user-service/Dockerfile
     ports:
       - "8081:8081"
+    expose:
+      - "9081"
     environment:
       <<: *service-env
+      PORT: "8081"
+      INTERNAL_PORT: "9081"
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@smartcourse.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin-password-123}
     depends_on:
       postgres:
         condition: service_healthy
-      liquibase:
+      liquibase-user:
         condition: service_completed_successfully
 
   course-service:
@@ -66,15 +95,17 @@ services:
       dockerfile: services/course-service/Dockerfile
     ports:
       - "8082:8082"
+    expose:
+      - "9082"
     environment:
       <<: *service-env
+      PORT: "8082"
+      INTERNAL_PORT: "9082"
     depends_on:
       postgres:
         condition: service_healthy
-      liquibase:
+      liquibase-course:
         condition: service_completed_successfully
-      user-service:
-        condition: service_started
 
   enrollment-service:
     build:
@@ -82,12 +113,17 @@ services:
       dockerfile: services/enrollment-service/Dockerfile
     ports:
       - "8083:8083"
+    expose:
+      - "9083"
     environment:
       <<: *service-env
+      PORT: "8083"
+      INTERNAL_PORT: "9083"
+      COURSE_SERVICE_URL: http://course-service:9082
     depends_on:
       postgres:
         condition: service_healthy
-      liquibase:
+      liquibase-enrollment:
         condition: service_completed_successfully
       course-service:
         condition: service_started

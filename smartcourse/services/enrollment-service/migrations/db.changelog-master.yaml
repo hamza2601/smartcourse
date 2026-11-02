@@ -1,4 +1,13 @@
 databaseChangeLog:
   - include:
-      file: 003-create-enrollment-service-schema.yaml
+      file: 001-create-enrollment-service-schema.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 002-create-lesson-progress-table.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 003-create-course-seats-table.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 004-create-outbox-events-table.yaml
       relativeToChangelogFile: true

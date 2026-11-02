@@ -1,4 +1,10 @@
 databaseChangeLog:
   - include:
-      file: 002-create-course-service-schema.yaml
+      file: 001-create-course-service-schema.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 002-create-modules-and-lessons.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 003-create-outbox-events-table.yaml
       relativeToChangelogFile: true

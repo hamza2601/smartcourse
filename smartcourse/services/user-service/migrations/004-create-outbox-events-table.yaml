@@ -1,48 +1,8 @@
 databaseChangeLog:
   - changeSet:
-      id: 001-create-user-service-schema
+      id: 004-create-outbox-events-table
       author: smartcourse
       changes:
-        - sql:
-            sql: CREATE SCHEMA IF NOT EXISTS user_service
-        - createTable:
-            schemaName: user_service
-            tableName: users
-            columns:
-              - column:
-                  name: id
-                  type: UUID
-                  constraints:
-                    primaryKey: true
-                    nullable: false
-              - column:
-                  name: email
-                  type: VARCHAR(255)
-                  constraints:
-                    nullable: false
-                    unique: true
-              - column:
-                  name: name
-                  type: VARCHAR(255)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: role
-                  type: VARCHAR(50)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: created_at
-                  type: TIMESTAMP
-                  defaultValueComputed: now()
-                  constraints:
-                    nullable: false
-              - column:
-                  name: updated_at
-                  type: TIMESTAMP
-                  defaultValueComputed: now()
-                  constraints:
-                    nullable: false
         - createTable:
             schemaName: user_service
             tableName: outbox_events
@@ -52,6 +12,16 @@ databaseChangeLog:
                   type: UUID
                   constraints:
                     primaryKey: true
+                    nullable: false
+              - column:
+                  name: aggregate_type
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: aggregate_id
+                  type: UUID
+                  constraints:
                     nullable: false
               - column:
                   name: event_type
@@ -74,3 +44,9 @@ databaseChangeLog:
                   type: TIMESTAMP
                   constraints:
                     nullable: true
+        # The relay only ever scans unprocessed rows in created_at order.
+        - sql:
+            sql: >
+              CREATE INDEX idx_outbox_events_unprocessed
+              ON user_service.outbox_events (created_at)
+              WHERE processed_at IS NULL
