@@ -51,3 +51,42 @@ type CourseStatusConflictError struct {
 func (e *CourseStatusConflictError) Error() string {
 	return fmt.Sprintf("course %s is %s; only draft courses can be published", e.CourseID, e.Status)
 }
+
+// ModuleNotFoundError: no module with this ID exists, or the caller may not see it.
+type ModuleNotFoundError struct {
+	ModuleID uuid.UUID
+}
+
+func (e *ModuleNotFoundError) Error() string {
+	return fmt.Sprintf("module not found: %s", e.ModuleID)
+}
+
+// LessonNotFoundError: no lesson with this ID exists, or the caller may not see it.
+type LessonNotFoundError struct {
+	LessonID uuid.UUID
+}
+
+func (e *LessonNotFoundError) Error() string {
+	return fmt.Sprintf("lesson not found: %s", e.LessonID)
+}
+
+// CourseNotEditableError: a course's modules and lessons can only be changed
+// while the course is a draft.
+type CourseNotEditableError struct {
+	CourseID uuid.UUID
+	Status   string
+}
+
+func (e *CourseNotEditableError) Error() string {
+	return fmt.Sprintf("course %s is %s; its content can only be changed while it is a draft", e.CourseID, e.Status)
+}
+
+// PositionConflictError: another module (in the course) or lesson (in the
+// module) already uses this position.
+type PositionConflictError struct {
+	Position int
+}
+
+func (e *PositionConflictError) Error() string {
+	return fmt.Sprintf("position %d is already in use", e.Position)
+}
