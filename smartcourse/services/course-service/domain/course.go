@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	CourseStatusDraft     = "draft"
-	CourseStatusPublished = "published"
-	CourseStatusArchived  = "archived"
+	CourseStatusDraft      = "draft"
+	CourseStatusPublishing = "publishing"
+	CourseStatusReady      = "ready"
+	CourseStatusArchived   = "archived"
 )
 
 type Course struct {
@@ -24,8 +25,12 @@ type Course struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-func (c *Course) IsPublished() bool {
-	return c.Status == CourseStatusPublished
+func (c *Course) IsReady() bool {
+	return c.Status == CourseStatusReady
+}
+
+func (c *Course) IsPublishing() bool {
+	return c.Status == CourseStatusPublishing
 }
 
 func (c *Course) IsDraft() bool {

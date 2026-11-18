@@ -188,6 +188,33 @@ func TestOwnerCanUpdateAndDelete(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 
+func TestOwnerCanWriteToReadyCourse(t *testing.T) {
+	f := newContentFixture(domain.CourseStatusReady)
+	ctx := context.Background()
+	title := "edited"
+
+	module, err := f.svc.CreateModule(ctx, f.owner, f.courseID, "New module", nil)
+	if err != nil {
+		t.Fatalf("create module: %v", err)
+	}
+	if _, err := f.svc.UpdateModule(ctx, f.owner, module.ID, &title, nil); err != nil {
+		t.Fatalf("update module: %v", err)
+	}
+	lesson, err := f.svc.CreateLesson(ctx, f.owner, module.ID, "New lesson", "body", nil)
+	if err != nil {
+		t.Fatalf("create lesson: %v", err)
+	}
+	if _, err := f.svc.UpdateLesson(ctx, f.owner, lesson.ID, &title, nil, nil); err != nil {
+		t.Fatalf("update lesson: %v", err)
+	}
+	if err := f.svc.DeleteLesson(ctx, f.owner, lesson.ID); err != nil {
+		t.Fatalf("delete lesson: %v", err)
+	}
+	if err := f.svc.DeleteModule(ctx, f.owner, module.ID); err != nil {
+		t.Fatalf("delete module: %v", err)
+	}
+}
+
 func TestNonOwnerCannotWrite(t *testing.T) {
 	f := newContentFixture(domain.CourseStatusDraft)
 	ctx := context.Background()
@@ -212,8 +239,8 @@ func TestNonOwnerCannotWrite(t *testing.T) {
 	}
 }
 
-func TestPublishedCourseRejectsWrites(t *testing.T) {
-	for _, status := range []string{domain.CourseStatusPublished, domain.CourseStatusArchived} {
+func TestPublishingAndArchivedCoursesRejectWrites(t *testing.T) {
+	for _, status := range []string{domain.CourseStatusPublishing, domain.CourseStatusArchived} {
 		f := newContentFixture(status)
 		ctx := context.Background()
 		title := "x"
@@ -270,8 +297,8 @@ func TestReadVisibility(t *testing.T) {
 		}
 	})
 
-	t.Run("others can read a published course", func(t *testing.T) {
-		f := newContentFixture(domain.CourseStatusPublished)
+	t.Run("others can read a ready course", func(t *testing.T) {
+		f := newContentFixture(domain.CourseStatusReady)
 		if modules, err := f.svc.ListModules(ctx, f.stranger, f.courseID); err != nil || len(modules) != 1 {
 			t.Fatalf("ListModules: %v, %v", modules, err)
 		}
@@ -283,16 +310,18 @@ func TestReadVisibility(t *testing.T) {
 		}
 	})
 
-	t.Run("others cannot read an archived course", func(t *testing.T) {
-		f := newContentFixture(domain.CourseStatusArchived)
-		var courseNotFound *apperrors.CourseNotFoundError
-		if _, err := f.svc.ListModules(ctx, f.stranger, f.courseID); !errors.As(err, &courseNotFound) {
-			t.Errorf("want CourseNotFoundError, got %v", err)
-		}
-	})
+	for _, status := range []string{domain.CourseStatusPublishing, domain.CourseStatusArchived} {
+		t.Run("others cannot read a "+status+" course", func(t *testing.T) {
+			f := newContentFixture(status)
+			var courseNotFound *apperrors.CourseNotFoundError
+			if _, err := f.svc.ListModules(ctx, f.stranger, f.courseID); !errors.As(err, &courseNotFound) {
+				t.Errorf("want CourseNotFoundError, got %v", err)
+			}
+		})
+	}
 
 	t.Run("unknown course and module", func(t *testing.T) {
-		f := newContentFixture(domain.CourseStatusPublished)
+		f := newContentFixture(domain.CourseStatusReady)
 		var courseNotFound *apperrors.CourseNotFoundError
 		var moduleNotFound *apperrors.ModuleNotFoundError
 		if _, err := f.svc.ListModules(ctx, f.owner, uuid.New()); !errors.As(err, &courseNotFound) {

@@ -120,8 +120,8 @@ func TestPublishCourse(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if course.Status != domain.CourseStatusPublished {
-			t.Fatalf("status = %q, want published", course.Status)
+		if course.Status != domain.CourseStatusReady {
+			t.Fatalf("status = %q, want ready", course.Status)
 		}
 		if len(store.events) != 1 || store.events[0].EventType != domain.EventCoursePublished || store.events[0].AggregateID != id {
 			t.Fatalf("want one CoursePublished event, got %+v", store.events)
@@ -140,7 +140,7 @@ func TestPublishCourse(t *testing.T) {
 		}
 	})
 
-	for _, status := range []string{domain.CourseStatusPublished, domain.CourseStatusArchived} {
+	for _, status := range []string{domain.CourseStatusReady, domain.CourseStatusArchived} {
 		t.Run("already "+status, func(t *testing.T) {
 			svc, store, id := setup(status)
 			_, err := svc.PublishCourse(context.Background(), id, owner)

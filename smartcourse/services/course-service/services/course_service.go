@@ -69,8 +69,11 @@ func (cs *CourseService) CreateCourse(ctx context.Context, instructorID uuid.UUI
 	return course, nil
 }
 
-// PublishCourse opens a draft course for enrollment. Only its instructor may
-// publish it.
+// PublishCourse marks a draft course ready, which opens it for enrollment.
+// Only its instructor may do this.
+//
+// TODO(Chunk 4): replace this direct draft -> ready move with a Temporal
+// workflow (draft -> publishing -> ready).
 func (cs *CourseService) PublishCourse(ctx context.Context, courseID, callerID uuid.UUID) (*domain.Course, error) {
 	course, err := cs.Repo.GetCourseByID(ctx, courseID)
 	if err != nil {
@@ -93,7 +96,7 @@ func (cs *CourseService) PublishCourse(ctx context.Context, courseID, callerID u
 		return nil, err
 	}
 
-	updated, err := cs.Repo.UpdateCourseStatus(ctx, courseID, domain.CourseStatusDraft, domain.CourseStatusPublished, event)
+	updated, err := cs.Repo.UpdateCourseStatus(ctx, courseID, domain.CourseStatusDraft, domain.CourseStatusReady, event)
 	if err != nil {
 		return nil, err
 	}

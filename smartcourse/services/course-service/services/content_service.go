@@ -44,7 +44,7 @@ func NewContentService(courseStore CourseStore, contentStore ContentStore) *Cont
 	return &ContentService{Courses: courseStore, Content: contentStore}
 }
 
-// CreateModule adds a module to a draft course owned by callerID. A nil
+// CreateModule adds a module to a draft or ready course owned by callerID. A nil
 // position appends the module after the existing ones.
 func (cs *ContentService) CreateModule(ctx context.Context, callerID, courseID uuid.UUID, title string, position *int) (*domain.Module, error) {
 	if err := validateTitle(title); err != nil {
@@ -136,7 +136,7 @@ func (cs *ContentService) DeleteModule(ctx context.Context, callerID, moduleID u
 	return cs.Content.DeleteModule(ctx, moduleID)
 }
 
-// CreateLesson adds a lesson to a module of a draft course owned by callerID.
+// CreateLesson adds a lesson to a module of a draft or ready course owned by callerID.
 // A nil position appends the lesson after the existing ones.
 func (cs *ContentService) CreateLesson(ctx context.Context, callerID, moduleID uuid.UUID, title, content string, position *int) (*domain.Lesson, error) {
 	if err := validateTitle(title); err != nil {
@@ -221,21 +221,21 @@ func (cs *ContentService) DeleteLesson(ctx context.Context, callerID, lessonID u
 }
 
 // requireEditable allows a write only for the course's instructor, and only
-// while the course is a draft.
+// while the course is a draft or ready (not while it is publishing or archived).
 func requireEditable(course *domain.Course, callerID uuid.UUID) error {
 	if !course.IsOwnedBy(callerID) {
 		return &apperrors.CourseNotOwnedError{CourseID: course.ID}
 	}
-	if !course.IsDraft() {
+	if !course.IsDraft() && !course.IsReady() {
 		return &apperrors.CourseNotEditableError{CourseID: course.ID, Status: course.Status}
 	}
 	return nil
 }
 
 // canRead lets the instructor see the content in any state, everyone else
-// only once the course is published.
+// only once the course is ready.
 func canRead(course *domain.Course, callerID uuid.UUID) bool {
-	return course.IsOwnedBy(callerID) || course.IsPublished()
+	return course.IsOwnedBy(callerID) || course.IsReady()
 }
 
 func validateTitle(title string) error {

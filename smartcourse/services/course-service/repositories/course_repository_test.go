@@ -75,12 +75,12 @@ func TestPublishWritesEventOnlyWhenStatusChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	updated, err := repo.UpdateCourseStatus(ctx, course.ID, domain.CourseStatusDraft, domain.CourseStatusPublished, newEvent(t, domain.EventCoursePublished, course.ID))
+	updated, err := repo.UpdateCourseStatus(ctx, course.ID, domain.CourseStatusDraft, domain.CourseStatusReady, newEvent(t, domain.EventCoursePublished, course.ID))
 	if err != nil || !updated {
 		t.Fatalf("publish: updated=%v err=%v", updated, err)
 	}
 	// Second attempt: no longer a draft, so no update and no second event.
-	updated, err = repo.UpdateCourseStatus(ctx, course.ID, domain.CourseStatusDraft, domain.CourseStatusPublished, newEvent(t, domain.EventCoursePublished, course.ID))
+	updated, err = repo.UpdateCourseStatus(ctx, course.ID, domain.CourseStatusDraft, domain.CourseStatusReady, newEvent(t, domain.EventCoursePublished, course.ID))
 	if err != nil || updated {
 		t.Fatalf("re-publish: updated=%v err=%v, want false", updated, err)
 	}

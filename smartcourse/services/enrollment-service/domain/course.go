@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	CourseStatusDraft     = "draft"
-	CourseStatusPublished = "published"
-	CourseStatusArchived  = "archived"
+	CourseStatusDraft    = "draft"
+	CourseStatusReady    = "ready"
+	CourseStatusArchived = "archived"
 )
 
 // Course is enrollment-service's read-only view of a course, as returned by
@@ -26,6 +26,6 @@ type Course struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-func (c *Course) IsPublished() bool {
-	return c.Status == CourseStatusPublished
+func (c *Course) IsReady() bool {
+	return c.Status == CourseStatusReady
 }

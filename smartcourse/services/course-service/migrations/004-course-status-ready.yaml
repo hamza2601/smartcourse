@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-course-status-ready
+      author: smartcourse
+      changes:
+        - sql:
+            sql: ALTER TABLE course_service.courses DROP CONSTRAINT chk_courses_status
+        - sql:
+            sql: UPDATE course_service.courses SET status = 'ready' WHERE status = 'published'
+        - sql:
+            sql: >
+              ALTER TABLE course_service.courses
+              ADD CONSTRAINT chk_courses_status
+              CHECK (status IN ('draft', 'publishing', 'ready', 'archived'))
+      # The old CHECK cannot hold 'publishing', so rolled-back publishing
+      # courses fall back to draft (the same move as publishing -> draft).
+      rollback:
+        - sql:
+            sql: ALTER TABLE course_service.courses DROP CONSTRAINT chk_courses_status
+        - sql:
+            sql: UPDATE course_service.courses SET status = 'published' WHERE status = 'ready'
+        - sql:
+            sql: UPDATE course_service.courses SET status = 'draft' WHERE status = 'publishing'
+        - sql:
+            sql: >
+              ALTER TABLE course_service.courses
+              ADD CONSTRAINT chk_courses_status
+              CHECK (status IN ('draft', 'published', 'archived'))

@@ -61,8 +61,7 @@ func intPtr(n int) *int { return &n }
 
 func TestEnrollStudent(t *testing.T) {
 	studentID, courseID := uuid.New(), uuid.New()
-	published := &domain.Course{ID: courseID, Status: domain.CourseStatusPublished, EnrollmentLimit: intPtr(25)}
-	draft := &domain.Course{ID: courseID, Status: domain.CourseStatusDraft}
+	ready := &domain.Course{ID: courseID, Status: domain.CourseStatusReady, EnrollmentLimit: intPtr(25)}
 
 	tests := []struct {
 		name       string
@@ -73,7 +72,7 @@ func TestEnrollStudent(t *testing.T) {
 		check      func(t *testing.T, e *domain.Enrollment, err error, store *fakeEnrollmentStore)
 	}{
 		{
-			name: "success passes the course limit to the store", status: 200, course: published,
+			name: "success passes the course limit to the store", status: 200, course: ready,
 			check: func(t *testing.T, e *domain.Enrollment, err error, store *fakeEnrollmentStore) {
 				if err != nil {
 					t.Fatal(err)
@@ -99,7 +98,7 @@ func TestEnrollStudent(t *testing.T) {
 			},
 		},
 		{
-			name: "course not found", status: 404, course: published,
+			name: "course not found", status: 404, course: ready,
 			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
 				var upstream *apperrors.UpstreamError
 				if err == nil || err.Error() != "course not found" || errors.As(err, &upstream) {
@@ -108,24 +107,27 @@ func TestEnrollStudent(t *testing.T) {
 			},
 		},
 		{
-			name: "course not published", status: 200, course: draft,
-			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
-				var notPublished *apperrors.CourseNotPublishedError
-				if !errors.As(err, &notPublished) {
-					t.Fatalf("want CourseNotPublishedError, got %v", err)
-				}
-			},
+			name: "course not ready: draft", status: 200, course: courseWithStatus(courseID, domain.CourseStatusDraft),
+			check: wantNotReady,
 		},
 		{
-			name: "course-service returns 500", status: 500, course: published,
+			name: "course not ready: publishing", status: 200, course: courseWithStatus(courseID, "publishing"),
+			check: wantNotReady,
+		},
+		{
+			name: "course not ready: archived", status: 200, course: courseWithStatus(courseID, domain.CourseStatusArchived),
+			check: wantNotReady,
+		},
+		{
+			name: "course-service returns 500", status: 500, course: ready,
 			check: wantUpstream,
 		},
 		{
-			name: "course-service unreachable", status: 200, course: published, courseDown: true,
+			name: "course-service unreachable", status: 200, course: ready, courseDown: true,
 			check: wantUpstream,
 		},
 		{
-			name: "course full", status: 200, course: published, storeErr: &apperrors.CourseFullError{CourseID: courseID},
+			name: "course full", status: 200, course: ready, storeErr: &apperrors.CourseFullError{CourseID: courseID},
 			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
 				var full *apperrors.CourseFullError
 				if !errors.As(err, &full) {
@@ -134,7 +136,7 @@ func TestEnrollStudent(t *testing.T) {
 			},
 		},
 		{
-			name: "already enrolled", status: 200, course: published,
+			name: "already enrolled", status: 200, course: ready,
 			storeErr: &apperrors.EnrollmentAlreadyExistsError{StudentID: studentID, CourseID: courseID},
 			check: func(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
 				var exists *apperrors.EnrollmentAlreadyExistsError
@@ -165,6 +167,20 @@ func TestEnrollStudent(t *testing.T) {
 	}
 }
 
+func courseWithStatus(id uuid.UUID, status string) *domain.Course {
+	return &domain.Course{ID: id, Status: status, EnrollmentLimit: intPtr(25)}
+}
+
+func wantNotReady(t *testing.T, _ *domain.Enrollment, err error, store *fakeEnrollmentStore) {
+	var notPublished *apperrors.CourseNotPublishedError
+	if !errors.As(err, &notPublished) {
+		t.Fatalf("want CourseNotPublishedError, got %v", err)
+	}
+	if len(store.enrolled) != 0 {
+		t.Fatal("a course that is not ready must not be enrolled in")
+	}
+}
+
 func wantUpstream(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollmentStore) {
 	var upstream *apperrors.UpstreamError
 	if !errors.As(err, &upstream) {
@@ -174,7 +190,7 @@ func wantUpstream(t *testing.T, _ *domain.Enrollment, err error, _ *fakeEnrollme
 
 func TestEnrollStudentWrongInternalKeyIsUpstreamError(t *testing.T) {
 	courseID := uuid.New()
-	srv := courseServer(t, 200, &domain.Course{ID: courseID, Status: domain.CourseStatusPublished})
+	srv := courseServer(t, 200, &domain.Course{ID: courseID, Status: domain.CourseStatusReady})
 	defer srv.Close()
 
 	svc := NewEnrollmentService(&fakeEnrollmentStore{}, srv.URL, "wrong-key")

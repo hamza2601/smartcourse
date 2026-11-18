@@ -52,7 +52,7 @@ func (es *EnrollmentService) EnrollStudent(ctx context.Context, studentID, cours
 	if err != nil {
 		return nil, err
 	}
-	if !course.IsPublished() {
+	if !course.IsReady() {
 		return nil, &apperrors.CourseNotPublishedError{CourseID: courseID}
 	}
 
