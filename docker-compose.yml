@@ -101,11 +101,14 @@ services:
       <<: *service-env
       PORT: "8082"
       INTERNAL_PORT: "9082"
+      TEMPORAL_HOSTPORT: temporal:7233
     depends_on:
       postgres:
         condition: service_healthy
       liquibase-course:
         condition: service_completed_successfully
+      temporal:
+        condition: service_started
 
   enrollment-service:
     build:
@@ -133,6 +136,7 @@ services:
     command: ["server", "start-dev", "--ip", "0.0.0.0"]
     ports:
       - "7233:7233"
+      - "8233:8233"
 
 volumes:
   postgres_data:

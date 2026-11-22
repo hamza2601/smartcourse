@@ -15,6 +15,7 @@ import (
 	"smartcourse/services/course-service/database"
 	"smartcourse/services/course-service/persistence"
 	"smartcourse/services/course-service/routes"
+	"smartcourse/services/course-service/worker"
 )
 
 func main() {
@@ -59,14 +60,21 @@ func run() error {
 		relay.Run(ctx)
 	}()
 
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		worker.Run(ctx, cfg.Temporal, lg)
+	}()
+
 	log.Printf("Course Service: public API on :%s, internal API on :%s", cfg.Port, cfg.InternalPort)
 	err = httpserver.Run(ctx,
 		&http.Server{Addr: ":" + cfg.Port, Handler: public},
 		&http.Server{Addr: ":" + cfg.InternalPort, Handler: internal},
 	)
-	// Stop the relay too when a server failed before any shutdown signal,
-	// and let it finish its current batch before the DB is closed.
+	// Stop the relay and the Temporal worker too when a server failed before
+	// any shutdown signal, and let them finish before the DB is closed.
 	stop()
 	<-relayDone
+	<-workerDone
 	return err
 }

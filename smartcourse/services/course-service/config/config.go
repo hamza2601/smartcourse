@@ -20,7 +20,8 @@ type Config struct {
 	InternalPort   string
 	InternalAPIKey string
 
-	Outbox OutboxConfig
+	Outbox   OutboxConfig
+	Temporal TemporalConfig
 
 	Env           string
 	JWT           JWTConfig
@@ -56,7 +57,8 @@ func LoadConfig() (*Config, error) {
 		InternalPort:   getEnv("INTERNAL_PORT", "9082"),
 		InternalAPIKey: internalKey,
 
-		Outbox: outboxCfg,
+		Outbox:   outboxCfg,
+		Temporal: loadTemporalConfig(),
 
 		Env:           env,
 		JWT:           jwtCfg,
