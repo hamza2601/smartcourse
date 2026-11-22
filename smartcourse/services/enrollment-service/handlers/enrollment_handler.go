@@ -94,3 +94,84 @@ func (eh *EnrollmentHandler) GetEnrollment(c *gin.Context) {
 
 	c.JSON(200, enrollment)
 }
+
+// GetEnrollmentForCaller is the public read: only the enrollment's student, or
+// an admin, can see it. (GetEnrollment above stays as the internal route's.)
+func (eh *EnrollmentHandler) GetEnrollmentForCaller(c *gin.Context) {
+	callerID, ok := auth.UserIDFrom(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "unauthenticated"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid enrollment id"})
+		return
+	}
+
+	enrollment, err := eh.Service.GetEnrollmentForCaller(c.Request.Context(), callerID, c.GetString(auth.ContextRole), id)
+	if err != nil {
+		var notFoundErr *apperrors.EnrollmentNotFoundError
+		var dbErr *apperrors.DatabaseError
+		switch {
+		case errors.As(err, &notFoundErr):
+			c.JSON(404, gin.H{"error": "enrollment not found"})
+		case errors.As(err, &dbErr):
+			c.JSON(500, gin.H{"error": "internal server error"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(200, enrollment)
+}
+
+func (eh *EnrollmentHandler) ListMyEnrollments(c *gin.Context) {
+	callerID, ok := auth.UserIDFrom(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "unauthenticated"})
+		return
+	}
+
+	enrollments, err := eh.Service.ListEnrollmentsForStudent(c.Request.Context(), callerID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(200, enrollments)
+}
+
+func (eh *EnrollmentHandler) CancelEnrollment(c *gin.Context) {
+	callerID, ok := auth.UserIDFrom(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "unauthenticated"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid enrollment id"})
+		return
+	}
+
+	enrollment, err := eh.Service.CancelEnrollment(c.Request.Context(), callerID, id)
+	if err != nil {
+		var notFoundErr *apperrors.EnrollmentNotFoundError
+		var notActiveErr *apperrors.EnrollmentNotActiveError
+		var dbErr *apperrors.DatabaseError
+		switch {
+		case errors.As(err, &notFoundErr):
+			c.JSON(404, gin.H{"error": "enrollment not found"})
+		case errors.As(err, &notActiveErr):
+			c.JSON(409, gin.H{"error": "enrollment is not active"})
+		case errors.As(err, &dbErr):
+			c.JSON(500, gin.H{"error": "internal server error"})
+		default:
+			c.JSON(400, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(200, enrollment)
+}

@@ -6,6 +6,7 @@ import (
 
 	"smartcourse/libs/common/auth"
 	"smartcourse/services/enrollment-service/config"
+	"smartcourse/services/enrollment-service/domain"
 	"smartcourse/services/enrollment-service/handlers"
 	"smartcourse/services/enrollment-service/repositories"
 	"smartcourse/services/enrollment-service/services"
@@ -25,8 +26,10 @@ func SetupEnrollmentServiceRoutes(db *gorm.DB, cfg *config.Config) (public, inte
 	public = gin.Default()
 	v1 := public.Group("/api/v1", auth.AuthMiddleware(tokenService.AccessTokenVerifier(cfg.JWT.SecretKey)))
 	{
-		v1.POST("/enrollments", enrollmentHandler.Enroll)
-		v1.GET("/enrollments/:id", enrollmentHandler.GetEnrollment)
+		v1.POST("/enrollments", auth.RequireRole(domain.RoleStudent), enrollmentHandler.Enroll)
+		v1.GET("/enrollments", enrollmentHandler.ListMyEnrollments)
+		v1.GET("/enrollments/:id", enrollmentHandler.GetEnrollmentForCaller)
+		v1.POST("/enrollments/:id/cancel", enrollmentHandler.CancelEnrollment)
 	}
 
 	internal = gin.Default()

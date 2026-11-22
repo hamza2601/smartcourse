@@ -39,6 +39,16 @@ func (f *fakeEnrollmentStore) Enroll(_ context.Context, e *domain.Enrollment, ca
 	return nil
 }
 
+// These two are not exercised by the enrollment tests; they only keep the fake
+// a valid EnrollmentStore (the cancel and history tests use memEnrollmentStore).
+func (f *fakeEnrollmentStore) ListEnrollmentsByStudent(context.Context, uuid.UUID) ([]domain.Enrollment, error) {
+	return nil, nil
+}
+
+func (f *fakeEnrollmentStore) CancelEnrollment(context.Context, *domain.Enrollment, outbox.Event) error {
+	return nil
+}
+
 // courseServer fakes course-service's /internal/courses/:id. It rejects calls
 // without the internal key, like the real InternalAuth middleware does.
 func courseServer(t *testing.T, status int, course *domain.Course) *httptest.Server {

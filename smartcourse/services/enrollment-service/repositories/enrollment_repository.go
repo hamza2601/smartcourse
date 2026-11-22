@@ -105,6 +105,93 @@ func reserveSeat(tx *gorm.DB, courseID uuid.UUID) error {
 	return nil
 }
 
+// CancelEnrollment cancels an active enrollment of enrollment.StudentID in one
+// transaction: a guarded UPDATE active -> cancelled, the seat release (never
+// below zero) and the EnrollmentCancelled outbox row. The UPDATE is the final
+// authority: when it matches no row the enrollment is re-read to tell "not
+// found / not the caller's" (EnrollmentNotFoundError) from "exists but is no
+// longer active" (EnrollmentNotActiveError), so a concurrent cancel is
+// handled correctly. On success enrollment holds the stored row.
+func (er *EnrollmentRepository) CancelEnrollment(ctx context.Context, enrollment *domain.Enrollment, event outbox.Event) error {
+	var cancelled persistence.EnrollmentDB
+
+	err := er.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&persistence.EnrollmentDB{}).
+			Where("id = ? AND student_id = ? AND status = ?", enrollment.ID, enrollment.StudentID, domain.EnrollmentStatusActive).
+			Update("status", domain.EnrollmentStatusCancelled)
+		if result.Error != nil {
+			return &apperrors.DatabaseError{Operation: "cancel enrollment", Err: result.Error}
+		}
+		if result.RowsAffected == 0 {
+			return whyNotCancelled(tx, enrollment)
+		}
+
+		if err := tx.Where("id = ?", enrollment.ID).First(&cancelled).Error; err != nil {
+			return &apperrors.DatabaseError{Operation: "reload cancelled enrollment", Err: err}
+		}
+
+		// A missing seat row (zero rows updated) is a no-op, not an error.
+		if err := tx.Exec(`
+			UPDATE `+seatsTable+`
+			SET taken = GREATEST(taken - 1, 0)
+			WHERE course_id = ?`,
+			cancelled.CourseID).Error; err != nil {
+			return &apperrors.DatabaseError{Operation: "release seat", Err: err}
+		}
+
+		if err := outbox.Insert(tx, persistence.OutboxTable, event); err != nil {
+			return &apperrors.DatabaseError{Operation: "write enrollment outbox event", Err: err}
+		}
+		return nil
+	})
+	if err != nil {
+		var (
+			notFound  *apperrors.EnrollmentNotFoundError
+			notActive *apperrors.EnrollmentNotActiveError
+			dbErr     *apperrors.DatabaseError
+		)
+		if errors.As(err, &notFound) || errors.As(err, &notActive) || errors.As(err, &dbErr) {
+			return err
+		}
+		return &apperrors.DatabaseError{Operation: "cancel enrollment", Err: err}
+	}
+
+	*enrollment = *mappers.EnrollmentDBToDomain(&cancelled)
+	return nil
+}
+
+// whyNotCancelled explains a guarded UPDATE that matched no row.
+func whyNotCancelled(tx *gorm.DB, enrollment *domain.Enrollment) error {
+	var row persistence.EnrollmentDB
+	if err := tx.Where("id = ?", enrollment.ID).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &apperrors.EnrollmentNotFoundError{EnrollmentID: enrollment.ID}
+		}
+		return &apperrors.DatabaseError{Operation: "re-read enrollment", Err: err}
+	}
+	if row.StudentID != enrollment.StudentID {
+		return &apperrors.EnrollmentNotFoundError{EnrollmentID: enrollment.ID}
+	}
+	return &apperrors.EnrollmentNotActiveError{EnrollmentID: enrollment.ID, Status: row.Status}
+}
+
+// ListEnrollmentsByStudent returns every enrollment of the student, whatever
+// its status, newest first (id breaks ties so the order is deterministic).
+func (er *EnrollmentRepository) ListEnrollmentsByStudent(ctx context.Context, studentID uuid.UUID) ([]domain.Enrollment, error) {
+	var rows []persistence.EnrollmentDB
+	if err := er.DB.WithContext(ctx).
+		Where("student_id = ?", studentID).
+		Order("created_at DESC, id DESC").
+		Find(&rows).Error; err != nil {
+		return nil, &apperrors.DatabaseError{Operation: "list enrollments by student", Err: err}
+	}
+	enrollments := make([]domain.Enrollment, len(rows))
+	for i := range rows {
+		enrollments[i] = *mappers.EnrollmentDBToDomain(&rows[i])
+	}
+	return enrollments, nil
+}
+
 func (er *EnrollmentRepository) GetEnrollmentByID(ctx context.Context, id uuid.UUID) (*domain.Enrollment, error) {
 	var enrollmentDB persistence.EnrollmentDB
 	if err := er.DB.WithContext(ctx).Where("id = ?", id).First(&enrollmentDB).Error; err != nil {

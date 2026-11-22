@@ -71,7 +71,7 @@ func (e *LessonNotFoundError) Error() string {
 }
 
 // CourseNotEditableError: a course's modules and lessons can only be changed
-// while the course is a draft.
+// while the course is a draft or ready.
 type CourseNotEditableError struct {
 	CourseID uuid.UUID
 	Status   string

@@ -6,7 +6,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const EnrollmentStatusActive = "active"
+const (
+	EnrollmentStatusActive    = "active"
+	EnrollmentStatusCancelled = "cancelled"
+)
 
 type Enrollment struct {
 	ID        uuid.UUID `json:"id"`
