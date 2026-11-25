@@ -14,8 +14,10 @@ import (
 	"smartcourse/services/course-service/config"
 	"smartcourse/services/course-service/database"
 	"smartcourse/services/course-service/persistence"
+	"smartcourse/services/course-service/repositories"
 	"smartcourse/services/course-service/routes"
 	"smartcourse/services/course-service/worker"
+	"smartcourse/services/course-service/workflows"
 )
 
 func main() {
@@ -60,10 +62,15 @@ func run() error {
 		relay.Run(ctx)
 	}()
 
+	activities := workflows.NewPublishActivities(
+		repositories.NewCourseRepository(db.DB),
+		repositories.NewContentRepository(db.DB),
+		lg,
+	)
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
-		worker.Run(ctx, cfg.Temporal, lg)
+		worker.Run(ctx, cfg.Temporal, activities, lg)
 	}()
 
 	log.Printf("Course Service: public API on :%s, internal API on :%s", cfg.Port, cfg.InternalPort)

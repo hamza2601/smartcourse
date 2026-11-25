@@ -98,6 +98,18 @@ func (cr *CourseRepository) UpdateCourseStatus(ctx context.Context, id uuid.UUID
 	return updated, nil
 }
 
+// TransitionStatus is a conditional status update that writes no outbox event.
+// It reports false when the course was not in status `from`.
+func (cr *CourseRepository) TransitionStatus(ctx context.Context, id uuid.UUID, from, to string) (bool, error) {
+	result := cr.DB.WithContext(ctx).Model(&persistence.CourseDB{}).
+		Where("id = ? AND status = ?", id, from).
+		Update("status", to)
+	if result.Error != nil {
+		return false, &apperrors.DatabaseError{Operation: "transition course status", Err: result.Error}
+	}
+	return result.RowsAffected > 0, nil
+}
+
 func coursesToDomain(coursesDB []persistence.CourseDB) []domain.Course {
 	courses := make([]domain.Course, len(coursesDB))
 	for i := range coursesDB {

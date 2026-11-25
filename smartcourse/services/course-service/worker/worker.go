@@ -26,7 +26,7 @@ const (
 // is cancelled, then stops the worker gracefully. If Temporal stays unreachable
 // it logs an error and returns, so the rest of the service keeps running
 // without a worker.
-func Run(ctx context.Context, cfg config.TemporalConfig, lg *slog.Logger) {
+func Run(ctx context.Context, cfg config.TemporalConfig, activities *workflows.PublishActivities, lg *slog.Logger) {
 	c, err := dial(ctx, cfg, lg)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -38,8 +38,8 @@ func Run(ctx context.Context, cfg config.TemporalConfig, lg *slog.Logger) {
 	defer c.Close()
 
 	w := sdkworker.New(c, workflows.TaskQueue, sdkworker.Options{})
-	w.RegisterWorkflow(workflows.HelloWorkflow)
-	w.RegisterActivity(workflows.GreetActivity)
+	w.RegisterWorkflow(workflows.PublishCourseWorkflow)
+	w.RegisterActivity(activities)
 
 	if err := w.Start(); err != nil {
 		lg.Error("temporal worker failed to start", "task_queue", workflows.TaskQueue, "error", err)

@@ -133,10 +133,16 @@ services:
 
   temporal:
     image: temporalio/temporal:latest
-    command: ["server", "start-dev", "--ip", "0.0.0.0"]
+    # Persist the dev server's state. The volume is mounted at the temporal
+    # user's home so that user can write to it (a fresh volume elsewhere is
+    # root-owned and the server could not open its database file).
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/home/temporal/temporal.db"]
     ports:
       - "7233:7233"
       - "8233:8233"
+    volumes:
+      - temporal_data:/home/temporal
 
 volumes:
   postgres_data:
+  temporal_data:

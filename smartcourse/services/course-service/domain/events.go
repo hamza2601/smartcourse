@@ -6,6 +6,8 @@ const (
 	AggregateTypeCourse  = "course"
 	EventCourseCreated   = "CourseCreated"
 	EventCoursePublished = "CoursePublished"
+
+	EventCoursePublishFailed = "CoursePublishFailed"
 )
 
 type CourseCreatedPayload struct {
@@ -14,6 +16,12 @@ type CourseCreatedPayload struct {
 	Name            string    `json:"name"`
 	Status          string    `json:"status"`
 	EnrollmentLimit *int      `json:"enrollment_limit"`
+}
+
+type CoursePublishFailedPayload struct {
+	CourseID     uuid.UUID `json:"course_id"`
+	InstructorID uuid.UUID `json:"instructor_id"`
+	Reason       string    `json:"reason"`
 }
 
 type CoursePublishedPayload struct {
