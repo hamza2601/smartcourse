@@ -26,7 +26,7 @@ const (
 // is cancelled, then stops the worker gracefully. If Temporal stays unreachable
 // it logs an error and returns, so the rest of the service keeps running
 // without a worker.
-func Run(ctx context.Context, cfg config.TemporalConfig, activities *workflows.PublishActivities, lg *slog.Logger) {
+func Run(ctx context.Context, cfg config.TemporalConfig, activities *workflows.PublishActivities, starter *workflows.PublishStarter, lg *slog.Logger) {
 	c, err := dial(ctx, cfg, lg)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -36,6 +36,7 @@ func Run(ctx context.Context, cfg config.TemporalConfig, activities *workflows.P
 		return
 	}
 	defer c.Close()
+	starter.SetClient(c)
 
 	w := sdkworker.New(c, workflows.TaskQueue, sdkworker.Options{})
 	w.RegisterWorkflow(workflows.PublishCourseWorkflow)

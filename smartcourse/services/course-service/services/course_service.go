@@ -19,17 +19,25 @@ type CourseStore interface {
 	CreateCourse(ctx context.Context, course *domain.Course, event outbox.Event) error
 	GetCourseByID(ctx context.Context, id uuid.UUID) (*domain.Course, error)
 	ListAllCourses(ctx context.Context) ([]domain.Course, error)
-	// UpdateCourseStatus moves a course from one status to another and
-	// reports false (writing no event) if the course was not in status `from`.
-	UpdateCourseStatus(ctx context.Context, id uuid.UUID, from, to string, event outbox.Event) (bool, error)
+	// UpdateCourse changes the non-nil fields, but only while the course is a
+	// draft or ready; otherwise it returns CourseNotEditableError (or
+	// CourseNotFoundError).
+	UpdateCourse(ctx context.Context, id uuid.UUID, name, description *string, enrollmentLimit *int) (*domain.Course, error)
+}
+
+// PublishStarter starts the publish workflow for a course; it is satisfied by
+// *workflows.PublishStarter.
+type PublishStarter interface {
+	StartPublish(ctx context.Context, courseID uuid.UUID, previousStatus string) error
 }
 
 type CourseService struct {
-	Repo CourseStore
+	Repo    CourseStore
+	Starter PublishStarter
 }
 
-func NewCourseService(repo CourseStore) *CourseService {
-	return &CourseService{Repo: repo}
+func NewCourseService(repo CourseStore, starter PublishStarter) *CourseService {
+	return &CourseService{Repo: repo, Starter: starter}
 }
 
 // CreateCourse creates a draft course owned by instructorID, which must come
@@ -69,12 +77,26 @@ func (cs *CourseService) CreateCourse(ctx context.Context, instructorID uuid.UUI
 	return course, nil
 }
 
-// PublishCourse marks a draft course ready, which opens it for enrollment.
-// Only its instructor may do this.
-//
-// TODO(Chunk 4): replace this direct draft -> ready move with a Temporal
-// workflow (draft -> publishing -> ready).
-func (cs *CourseService) PublishCourse(ctx context.Context, courseID, callerID uuid.UUID) (*domain.Course, error) {
+// PublishCourse starts the publish workflow for a draft or ready course; the
+// workflow does the rest asynchronously. Only the course's instructor may do
+// this. A course that is publishing (or archived) cannot be published.
+func (cs *CourseService) PublishCourse(ctx context.Context, courseID, callerID uuid.UUID) error {
+	course, err := cs.Repo.GetCourseByID(ctx, courseID)
+	if err != nil {
+		return err
+	}
+	if !course.IsOwnedBy(callerID) {
+		return &apperrors.CourseNotOwnedError{CourseID: courseID}
+	}
+	if course.Status != domain.CourseStatusDraft && course.Status != domain.CourseStatusReady {
+		return &apperrors.CourseStatusConflictError{CourseID: courseID, Status: course.Status}
+	}
+	return cs.Starter.StartPublish(ctx, courseID, course.Status)
+}
+
+// UpdateCourse changes the given fields of a draft or ready course; nil fields
+// are left unchanged. Only the course's instructor may do this.
+func (cs *CourseService) UpdateCourse(ctx context.Context, courseID, callerID uuid.UUID, name, description *string, enrollmentLimit *int) (*domain.Course, error) {
 	course, err := cs.Repo.GetCourseByID(ctx, courseID)
 	if err != nil {
 		return nil, err
@@ -82,33 +104,20 @@ func (cs *CourseService) PublishCourse(ctx context.Context, courseID, callerID u
 	if !course.IsOwnedBy(callerID) {
 		return nil, &apperrors.CourseNotOwnedError{CourseID: courseID}
 	}
-	if !course.IsDraft() {
-		return nil, &apperrors.CourseStatusConflictError{CourseID: courseID, Status: course.Status}
-	}
-
-	event, err := outbox.NewEvent(domain.AggregateTypeCourse, course.ID, domain.EventCoursePublished, domain.CoursePublishedPayload{
-		CourseID:        course.ID,
-		InstructorID:    course.InstructorID,
-		Name:            course.Name,
-		EnrollmentLimit: course.EnrollmentLimit,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	updated, err := cs.Repo.UpdateCourseStatus(ctx, courseID, domain.CourseStatusDraft, domain.CourseStatusReady, event)
-	if err != nil {
-		return nil, err
-	}
-	if !updated {
-		// Status changed between the read and the conditional update.
-		current, err := cs.Repo.GetCourseByID(ctx, courseID)
-		if err != nil {
-			return nil, err
+	if name != nil {
+		trimmed := strings.TrimSpace(*name)
+		if trimmed == "" {
+			return nil, fmt.Errorf("course name cannot be empty")
 		}
-		return nil, &apperrors.CourseStatusConflictError{CourseID: courseID, Status: current.Status}
+		name = &trimmed
 	}
-	return cs.Repo.GetCourseByID(ctx, courseID)
+	if enrollmentLimit != nil && *enrollmentLimit <= 0 {
+		return nil, fmt.Errorf("enrollment limit must be greater than 0")
+	}
+	if course.Status != domain.CourseStatusDraft && course.Status != domain.CourseStatusReady {
+		return nil, &apperrors.CourseNotEditableError{CourseID: courseID, Status: course.Status}
+	}
+	return cs.Repo.UpdateCourse(ctx, courseID, name, description, enrollmentLimit)
 }
 
 func (cs *CourseService) GetCourse(ctx context.Context, id uuid.UUID) (*domain.Course, error) {

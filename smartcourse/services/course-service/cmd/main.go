@@ -45,7 +45,8 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	public, internal := routes.SetupCourseServiceRoutes(db.DB, cfg)
+	starter := &workflows.PublishStarter{}
+	public, internal := routes.SetupCourseServiceRoutes(db.DB, cfg, starter)
 
 	lg := logger.New("course-service")
 	relay := &outbox.Relay{
@@ -70,7 +71,7 @@ func run() error {
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
-		worker.Run(ctx, cfg.Temporal, activities, lg)
+		worker.Run(ctx, cfg.Temporal, activities, starter, lg)
 	}()
 
 	log.Printf("Course Service: public API on :%s, internal API on :%s", cfg.Port, cfg.InternalPort)

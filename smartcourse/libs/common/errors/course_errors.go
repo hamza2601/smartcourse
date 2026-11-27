@@ -49,7 +49,7 @@ type CourseStatusConflictError struct {
 }
 
 func (e *CourseStatusConflictError) Error() string {
-	return fmt.Sprintf("course %s is %s; only draft courses can be marked ready", e.CourseID, e.Status)
+	return fmt.Sprintf("course %s is %s; only draft or ready courses can be published", e.CourseID, e.Status)
 }
 
 // ModuleNotFoundError: no module with this ID exists, or the caller may not see it.
@@ -78,7 +78,7 @@ type CourseNotEditableError struct {
 }
 
 func (e *CourseNotEditableError) Error() string {
-	return fmt.Sprintf("course %s is %s; its content can only be changed while it is a draft or ready", e.CourseID, e.Status)
+	return fmt.Sprintf("course %s is %s; it can only be changed while it is a draft or ready", e.CourseID, e.Status)
 }
 
 // PositionConflictError: another module (in the course) or lesson (in the

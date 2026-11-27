@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -96,6 +97,38 @@ func (cr *CourseRepository) UpdateCourseStatus(ctx context.Context, id uuid.UUID
 		return false, &apperrors.DatabaseError{Operation: "update course status", Err: err}
 	}
 	return updated, nil
+}
+
+// UpdateCourse changes the non-nil fields in a guarded UPDATE that only matches
+// a draft or ready course, and returns the updated course. If nothing matched
+// it re-reads to tell a missing course from one that is not editable.
+func (cr *CourseRepository) UpdateCourse(ctx context.Context, id uuid.UUID, name, description *string, enrollmentLimit *int) (*domain.Course, error) {
+	updates := map[string]any{"updated_at": time.Now()}
+	if name != nil {
+		updates["name"] = *name
+	}
+	if description != nil {
+		updates["description"] = *description
+	}
+	if enrollmentLimit != nil {
+		updates["enrollment_limit"] = *enrollmentLimit
+	}
+
+	result := cr.DB.WithContext(ctx).Model(&persistence.CourseDB{}).
+		Where("id = ? AND status IN ?", id, []string{domain.CourseStatusDraft, domain.CourseStatusReady}).
+		Updates(updates)
+	if result.Error != nil {
+		return nil, &apperrors.DatabaseError{Operation: "update course", Err: result.Error}
+	}
+
+	course, err := cr.GetCourseByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected == 0 {
+		return nil, &apperrors.CourseNotEditableError{CourseID: id, Status: course.Status}
+	}
+	return course, nil
 }
 
 // TransitionStatus is a conditional status update that writes no outbox event.
